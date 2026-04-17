@@ -10,7 +10,6 @@ const bridge = new PythonBridge(async (message) => {
     if (message.type === 'audio_ready') {
         const inputAudioPath = message.data;
         
-        // 1. Convert Speech to Text (Groq API)
         const userPrompt = await groqService.transcribeAudio(inputAudioPath);
         if (!userPrompt) {
             console.log("[Quince] I couldn't hear that clearly.");
@@ -18,15 +17,12 @@ const bridge = new PythonBridge(async (message) => {
         }
         console.log(`[User] ${userPrompt}`);
 
-        // 2. Process Intent (Groq LLM)
         const responseText = await groqService.processPrompt(userPrompt);
         console.log(`[Quince] ${responseText}`);
 
-        // 3. Convert Text to Speech (Groq API)
         const outputAudioPath = path.resolve(__dirname, '..', 'services', 'temp_response.wav');
         const ttsSuccess = await groqService.synthesizeSpeech(responseText, outputAudioPath);
         
-        // 4. Tell Python to play the resulting audio file
         if (ttsSuccess) {
             bridge.sendToPython('play_audio', outputAudioPath);
         }

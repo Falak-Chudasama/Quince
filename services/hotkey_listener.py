@@ -8,7 +8,6 @@ class AudioRecorder:
         self.sample_rate = sample_rate
         self.is_recording = False
         self.audio_data = []
-        # Use an absolute path in the current directory
         self.temp_filename = os.path.abspath("temp_recording.wav")
         self.stream = None
 

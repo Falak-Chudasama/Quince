@@ -48,7 +48,6 @@ const tools = [
     }
 ];
 
-// Ephemeral Context RAM - Resets when the app closes
 let messages = [
     { role: "system", content: config.SYSTEM_PROMPT }
 ];
@@ -69,9 +68,7 @@ async function transcribeAudio(audioPath) {
 
 async function processPrompt(userText) {
     try {
-        // Manage context length so it doesn't overflow Groq's limits over long sessions
         if (messages.length > 20) {
-            // Keep the system prompt, but remove older conversation turns
             messages.splice(1, 2); 
         }
 
@@ -120,11 +117,10 @@ async function processPrompt(userText) {
                 });
                 
                 const finalMsg = followUpResponse.choices[0].message;
-                messages.push(finalMsg); // Save final response to context
+                messages.push(finalMsg);
                 return finalMsg.content;
             }
 
-            // Save the action confirmation to the context memory
             messages.push(responseMessage);
             messages.push({
                 role: "tool",
@@ -133,12 +129,11 @@ async function processPrompt(userText) {
                 content: JSON.stringify(actionResult)
             });
 
-            // Return the direct execution string to the user
             return actionResult.message;
         }
 
         if (responseMessage.content) {
-            messages.push(responseMessage); // Save conversational response to context memory
+            messages.push(responseMessage); 
             return responseMessage.content;
         }
 

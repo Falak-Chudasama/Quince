@@ -49,7 +49,6 @@ def main():
                 audio_file = recorder.stop_recording()
 
                 if audio_file:
-                    # Send the file path to Node.js for Groq API processing
                     send_to_node("audio_ready", audio_file)
             time.sleep(0.05)
         except KeyboardInterrupt:

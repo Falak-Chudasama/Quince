@@ -3,11 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const stringSimilarity = require('string-similarity');
 
-// Maps to store actual PC applications
 let appIndex = {}; 
 let appNames = [];
 
-// Tricky apps that don't rely on start menu shortcuts
 const fallbackAppMap = {
     "whatsapp": "whatsapp:",
     "settings": "ms-settings:",
@@ -16,7 +14,6 @@ const fallbackAppMap = {
     "calculator": "calc"
 };
 
-// Scan Windows Start Menu to find installed applications
 function buildAppIndex() {
     console.log("[Action Handler] Scanning PC for installed applications...");
     
@@ -36,7 +33,6 @@ function buildAppIndex() {
             if (stat.isDirectory()) {
                 scanDirectory(fullPath);
             } else if (fullPath.endsWith('.lnk') || fullPath.endsWith('.exe')) {
-                // Strip extension for the clean name
                 const cleanName = path.basename(file, path.extname(file)).toLowerCase();
                 appIndex[cleanName] = fullPath;
                 appNames.push(cleanName);
@@ -45,7 +41,7 @@ function buildAppIndex() {
     }
 
     startMenuPaths.forEach(scanDirectory);
-    // Add our fallbacks into the index
+
     Object.keys(fallbackAppMap).forEach(key => {
         appIndex[key] = fallbackAppMap[key];
         appNames.push(key);
@@ -54,20 +50,17 @@ function buildAppIndex() {
     console.log(`[Action Handler] Index built with ${appNames.length} applications.`);
 }
 
-// Build the index immediately on startup
 buildAppIndex();
 
 async function openApplication(appName) {
     return new Promise((resolve) => {
         const query = appName.toLowerCase().trim();
         
-        // Calculate relativeness against actual installed apps
         const matches = stringSimilarity.findBestMatch(query, appNames);
         const bestMatch = matches.bestMatch;
 
         console.log(`[Action Handler] Best match for "${query}" is "${bestMatch.target}" (Rating: ${(bestMatch.rating * 100).toFixed(1)}%)`);
 
-        // Check if the match is 60% or higher
         if (bestMatch.rating >= 0.6) {
             const commandTarget = appIndex[bestMatch.target];
             const command = `start "" "${commandTarget}"`;
