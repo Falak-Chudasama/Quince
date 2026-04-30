@@ -108,9 +108,28 @@ function getCurrentTime() {
     return { success: true, data: now.toLocaleString() };
 }
 
+async function captureScreen() {
+    return new Promise((resolve, reject) => {
+        const pythonExecutable = path.join(__dirname, '..', 'services', 'venv', 'Scripts', 'python.exe');
+        const scriptPath = path.join(__dirname, '..', 'services', 'screen_grab.py');
+        
+        console.log(`[Action Handler] Capturing in-memory screenshot...`);
+        
+        exec(`"${pythonExecutable}" "${scriptPath}"`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
+            if (error || stdout.startsWith('ERROR:')) {
+                console.error(`[Action Handler] Screen capture failed:`, error || stdout);
+                resolve({ success: false, message: "I failed to capture the screen." });
+            } else {
+                resolve({ success: true, base64: stdout.trim() });
+            }
+        });
+    });
+}
+
 module.exports = {
     openApplication,
     searchWeb,
     lockScreen,
-    getCurrentTime
+    getCurrentTime,
+    captureScreen
 };
