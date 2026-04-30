@@ -49,14 +49,13 @@ rl.question(`${C_GOLD}? Select Inference Mode (cloud/local) [cloud]: ${C_RESET}`
     // --- SPAWN PERSISTENT RAG SERVER ---
     ragServer = spawn(venvPython, [path.join(__dirname, '..', 'services', 'rag_server.py')]);
     
-    // Catch errors if it fails to boot
     ragServer.stderr.on('data', (data) => {
         if (data.toString().includes("Error") || data.toString().includes("Exception")) {
             console.log(`\x1b[31m[Memory Server Error] ${data.toString().trim()}${C_RESET}`);
         }
     });
 
-    // Give FastAPI and PyTorch ~4 seconds to load the 1.2GB model into RAM
+    // Give FastAPI and PyTorch ~4 seconds to load the embedding model into RAM
     await new Promise(resolve => setTimeout(resolve, 4000)); 
     
     try {
@@ -99,7 +98,7 @@ function startAgent() {
         const text = line.trim();
         if (text.toLowerCase() === 'exit') {
             console.log(`${C_FIRE}Shutting down...${C_RESET}`);
-            if (ragServer) ragServer.kill(); // Kill the FastAPI server on exit
+            if (ragServer) ragServer.kill(); 
             process.exit(0);
         }
         if (text) {

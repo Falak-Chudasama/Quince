@@ -3,6 +3,7 @@ const axios = require('axios');
 const Groq = require("groq-sdk");
 const config = require("./config");
 const actionHandler = require("./action_handler");
+const path = require('path');
 
 const groq = new Groq({ apiKey: config.GROQ_API_KEY });
 
@@ -108,7 +109,7 @@ async function processPrompt(userText, mode) {
                 messages: messages,
                 tools: tools,
                 tool_choice: "auto",
-                max_tokens: 150,
+                max_completion_tokens: 150,
                 temperature: 0.5
             });
 
@@ -121,7 +122,7 @@ async function processPrompt(userText, mode) {
                 const args = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
                 let actionResult;
                 
-                // --- VISION ---
+                // --- VISION API INTEGRATION ---
                 if (functionName === "analyze_screen") {
                     const screenData = await actionHandler.captureScreen();
                     if (!screenData.success) return screenData.message;
@@ -129,16 +130,17 @@ async function processPrompt(userText, mode) {
                     messages.push(responseMessage);
                     messages.push({ role: "tool", tool_call_id: toolCall.id, name: functionName, content: "Screenshot captured." });
 
+                    // Utilizing Llama 4 Scout 17B for powerful, multi-turn multimodal capabilities
                     const visionResponse = await groq.chat.completions.create({
-                        model: "llama-3.2-11b-vision-preview",
+                        model: "meta-llama/llama-4-scout-17b-16e-instruct",
                         messages: [
-                            { role: "system", content: "You are Quince. Describe the screen concisely." },
+                            { role: "system", content: "You are Quince, a helpful desktop assistant. Describe the visual input concisely to aid the user." },
                             { role: "user", content: [
-                                { type: "text", text: `Analyze this screen to answer: "${userText}"` },
+                                { type: "text", text: `Analyze this screenshot to answer the user's request: "${userText}"` },
                                 { type: "image_url", image_url: { url: `data:image/jpeg;base64,${screenData.base64}` } }
                             ]}
                         ],
-                        max_tokens: 200
+                        max_completion_tokens: 500
                     });
 
                     finalResponseText = visionResponse.choices[0].message.content;
@@ -154,7 +156,7 @@ async function processPrompt(userText, mode) {
                     messages.push(responseMessage);
                     messages.push({ role: "tool", tool_call_id: toolCall.id, name: functionName, content: JSON.stringify(actionResult) });
 
-                    const followUpResponse = await groq.chat.completions.create({ model: config.GROQ_MODEL, messages: messages, max_tokens: 100 });
+                    const followUpResponse = await groq.chat.completions.create({ model: config.GROQ_MODEL, messages: messages, max_completion_tokens: 150 });
                     finalResponseText = followUpResponse.choices[0].message.content;
                     messages.push({ role: "assistant", content: finalResponseText });
                 }
