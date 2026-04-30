@@ -19,25 +19,39 @@ async function getMemoryContext(text) {
     } catch (e) { return ""; }
 }
 
-// --- UPDATED TOOLS SCHEMA ---
+// --- UPDATED TOOLS SCHEMA (Now supports desktop_target for both app and web) ---
 const tools = [
-    { type: "function", function: { name: "analyze_screen", description: "Takes a live screenshot. Use this ONLY when the user explicitly asks what is on their screen, what they are looking at, or to read an error on the screen.", parameters: { type: "object", properties: {} } } },
+    { type: "function", function: { name: "analyze_screen", description: "Takes a live screenshot. Use this ONLY when the user asks what is on their screen, what they are looking at, or to read an error.", parameters: { type: "object", properties: {} } } },
     { 
         type: "function", 
         function: { 
             name: "open_application", 
-            description: "Opens an application. Can optionally switch to a specific virtual desktop number (e.g. desktop 2) before opening.", 
+            description: "Opens an application.", 
             parameters: { 
                 type: "object", 
                 properties: { 
                     app_name: { type: "string" },
-                    desktop_number: { type: "integer", description: "The virtual desktop number to open the app on (1-indexed). Leave blank if the user doesn't specify a desktop." }
+                    desktop_target: { type: "string", description: "The specific name (e.g. 'Work') or number (e.g. '2') of the virtual desktop to switch to before opening. Leave blank if not specified." }
                 }, 
                 required: ["app_name"] 
             } 
         } 
     },
-    { type: "function", function: { name: "search_web", description: "Searches the web.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } },
+    { 
+        type: "function", 
+        function: { 
+            name: "search_web", 
+            description: "Searches the web.", 
+            parameters: { 
+                type: "object", 
+                properties: { 
+                    query: { type: "string" },
+                    desktop_target: { type: "string", description: "The specific name or number of the virtual desktop to switch to before searching. Leave blank if not specified." }
+                }, 
+                required: ["query"] 
+            } 
+        } 
+    },
     { type: "function", function: { name: "lock_screen", description: "Locks the screen.", parameters: { type: "object", properties: {} } } }
 ];
 
@@ -49,9 +63,7 @@ async function transcribeAudio(audioPath, mode) {
             const res = await axios.post(`${LOCAL_API}/stt`, { path: audioPath });
             return res.data.text;
         } else {
-            const transcription = await groq.audio.transcriptions.create({
-                file: fs.createReadStream(audioPath), model: "whisper-large-v3", language: "en",
-            });
+            const transcription = await groq.audio.transcriptions.create({ file: fs.createReadStream(audioPath), model: "whisper-large-v3", language: "en" });
             return transcription.text.trim();
         }
     } catch (error) { return null; }
@@ -63,9 +75,7 @@ async function synthesizeSpeech(text, outputPath, mode) {
             await axios.post(`${LOCAL_API}/tts`, { text: text, output_path: outputPath });
             return true;
         } else {
-            const response = await groq.audio.speech.create({
-                model: "canopylabs/orpheus-v1-english", voice: "autumn", input: text, response_format: "wav"
-            });
+            const response = await groq.audio.speech.create({ model: "canopylabs/orpheus-v1-english", voice: "autumn", input: text, response_format: "wav" });
             const buffer = Buffer.from(await response.arrayBuffer());
             fs.writeFileSync(outputPath, buffer);
             return true;
@@ -77,9 +87,7 @@ async function processPrompt(userText, mode) {
     try {
         const pastContext = await getMemoryContext(userText);
         let contextualPrompt = userText;
-        if (pastContext && mode === 'local') {
-            contextualPrompt = `[Context:\n${pastContext}]\n\nUser: ${userText}`;
-        }
+        if (pastContext && mode === 'local') contextualPrompt = `[Context:\n${pastContext}]\n\nUser: ${userText}`;
         
         if (mode === 'local') await addMemory("user", userText);
 
@@ -128,7 +136,7 @@ async function processPrompt(userText, mode) {
                     const visionResponse = await groq.chat.completions.create({
                         model: "meta-llama/llama-4-scout-17b-16e-instruct",
                         messages: [
-                            { role: "system", content: "You are Quince. Describe the screen concisely." },
+                            { role: "system", content: "You are Quince. Describe the screen." },
                             { role: "user", content: [{ type: "text", text: `Analyze this screen: "${userText}"` }, { type: "image_url", image_url: { url: `data:image/jpeg;base64,${screenData.base64}` } }]}
                         ],
                         max_completion_tokens: 200
@@ -141,9 +149,9 @@ async function processPrompt(userText, mode) {
                     const args = JSON.parse(toolCall.function.arguments || "{}");
                     let actionResult;
                     
-                    // --- UPDATED TO PASS DESKTOP NUMBER ---
-                    if (functionName === "open_application") actionResult = await actionHandler.openApplication(args.app_name, args.desktop_number);
-                    else if (functionName === "search_web") actionResult = await actionHandler.searchWeb(args.query);
+                    // --- UPDATED EXECUTION ---
+                    if (functionName === "open_application") actionResult = await actionHandler.openApplication(args.app_name, args.desktop_target);
+                    else if (functionName === "search_web") actionResult = await actionHandler.searchWeb(args.query, args.desktop_target);
                     else if (functionName === "lock_screen") actionResult = await actionHandler.lockScreen();
 
                     messages.push(responseMessage);

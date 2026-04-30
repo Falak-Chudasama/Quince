@@ -1,4 +1,4 @@
-const { exec, execSync } = require('child_process');
+const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const stringSimilarity = require('string-similarity');
@@ -24,12 +24,10 @@ function buildAppIndex() {
 
     function scanDirectory(directory) {
         if (!fs.existsSync(directory)) return;
-        
         const files = fs.readdirSync(directory);
         for (const file of files) {
             const fullPath = path.join(directory, file);
             const stat = fs.statSync(fullPath);
-            
             if (stat.isDirectory()) {
                 scanDirectory(fullPath);
             } else if (fullPath.endsWith('.lnk') || fullPath.endsWith('.exe')) {
@@ -41,51 +39,52 @@ function buildAppIndex() {
     }
 
     startMenuPaths.forEach(scanDirectory);
-
-    Object.keys(fallbackAppMap).forEach(key => {
-        appIndex[key] = fallbackAppMap[key];
-        appNames.push(key);
-    });
-
+    Object.keys(fallbackAppMap).forEach(key => { appIndex[key] = fallbackAppMap[key]; appNames.push(key); });
     console.log(`[Action Handler] Index built with ${appNames.length} applications.`);
 }
-
 buildAppIndex();
 
-// --- UPDATED: Added desktopNumber logic ---
-async function openApplication(appName, desktopNumber = null) {
+// --- NEW HELPER: Desktop Matcher ---
+async function switchDesktop(targetName) {
     return new Promise((resolve) => {
+        if (!targetName) return resolve({ success: true, message: "" });
+        
+        const pythonExecutable = path.join(__dirname, '..', 'services', 'venv', 'Scripts', 'python.exe');
+        const scriptPath = path.join(__dirname, '..', 'services', 'desktop_manager.py');
+        
+        console.log(`\x1b[90m[Action Handler] Matching desktop for: "${targetName}"...\x1b[0m`);
+        exec(`"${pythonExecutable}" "${scriptPath}" "${targetName}"`, (error, stdout) => {
+            try {
+                const result = JSON.parse(stdout.trim());
+                if (result.success) console.log(`\x1b[90m[Action Handler] ${result.message}\x1b[0m`);
+                resolve(result);
+            } catch (e) {
+                resolve({ success: false, message: "Failed to parse desktop manager output." });
+            }
+        });
+    });
+}
+
+async function openApplication(appName, desktopTarget = null) {
+    return new Promise(async (resolve) => {
         const query = appName.toLowerCase().trim();
         const matches = stringSimilarity.findBestMatch(query, appNames);
         const bestMatch = matches.bestMatch;
 
         if (bestMatch.rating >= 0.6) {
-            const commandTarget = appIndex[bestMatch.target];
-            
-            // If the LLM passed a desktop number, switch to it first
-            if (desktopNumber) {
-                const pythonExecutable = path.join(__dirname, '..', 'services', 'venv', 'Scripts', 'python.exe');
-                const scriptPath = path.join(__dirname, '..', 'services', 'desktop_manager.py');
-                
-                console.log(`\x1b[90m[Action Handler] Switching to virtual desktop ${desktopNumber}...\x1b[0m`);
-                try {
-                    execSync(`"${pythonExecutable}" "${scriptPath}" ${desktopNumber}`);
-                } catch(e) {
-                    console.error("[Action Handler] Failed to switch desktop.");
-                }
+            let desktopMsg = "";
+            if (desktopTarget) {
+                const desktopResult = await switchDesktop(desktopTarget);
+                if (desktopResult.success) desktopMsg = ` on ${desktopResult.message.replace("Switched to ", "")}`;
             }
 
+            const commandTarget = appIndex[bestMatch.target];
             const command = `start "" "${commandTarget}"`;
             console.log(`\x1b[90m[Action Handler] Executing: ${command}\x1b[0m`);
             
             exec(command, (error) => {
-                if (error) {
-                    resolve({ success: false, message: `I encountered an error trying to open ${bestMatch.target}.` });
-                } else {
-                    let msg = `I have opened ${bestMatch.target}.`;
-                    if (desktopNumber) msg = `I switched to desktop ${desktopNumber} and opened ${bestMatch.target}.`;
-                    resolve({ success: true, message: msg });
-                }
+                if (error) resolve({ success: false, message: `I encountered an error trying to open ${bestMatch.target}.` });
+                else resolve({ success: true, message: `I have opened ${bestMatch.target}${desktopMsg}.` });
             });
         } else {
             resolve({ success: false, message: `I couldn't find an application closely matching ${appName}.` });
@@ -93,12 +92,18 @@ async function openApplication(appName, desktopNumber = null) {
     });
 }
 
-async function searchWeb(query) {
-    return new Promise((resolve) => {
+async function searchWeb(query, desktopTarget = null) {
+    return new Promise(async (resolve) => {
+        let desktopMsg = "";
+        if (desktopTarget) {
+            const desktopResult = await switchDesktop(desktopTarget);
+            if (desktopResult.success) desktopMsg = ` on ${desktopResult.message.replace("Switched to ", "")}`;
+        }
+
         const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
         exec(`start "" "${url}"`, (error) => {
             if (error) resolve({ success: false, message: `I couldn't complete the web search.` });
-            else resolve({ success: true, message: `Here are the search results for ${query}.` });
+            else resolve({ success: true, message: `Here are the search results for ${query}${desktopMsg}.` });
         });
     });
 }
@@ -117,12 +122,11 @@ function getCurrentTime() {
 }
 
 async function captureScreen() {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         const pythonExecutable = path.join(__dirname, '..', 'services', 'venv', 'Scripts', 'python.exe');
         const scriptPath = path.join(__dirname, '..', 'services', 'screen_grab.py');
-        
-        exec(`"${pythonExecutable}" "${scriptPath}"`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-            if (error || stdout.startsWith('ERROR:')) resolve({ success: false, message: "Failed to capture the screen." });
+        exec(`"${pythonExecutable}" "${scriptPath}"`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout) => {
+            if (error || stdout.startsWith('ERROR:')) resolve({ success: false, message: "Failed to capture screen." });
             else resolve({ success: true, base64: stdout.trim() });
         });
     });
