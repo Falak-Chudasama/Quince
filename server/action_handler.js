@@ -1,4 +1,4 @@
-const { exec } = require('child_process');
+const { exec, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const stringSimilarity = require('string-similarity');
@@ -52,32 +52,43 @@ function buildAppIndex() {
 
 buildAppIndex();
 
-async function openApplication(appName) {
+// --- UPDATED: Added desktopNumber logic ---
+async function openApplication(appName, desktopNumber = null) {
     return new Promise((resolve) => {
         const query = appName.toLowerCase().trim();
-        
         const matches = stringSimilarity.findBestMatch(query, appNames);
         const bestMatch = matches.bestMatch;
 
-        console.log(`[Action Handler] Best match for "${query}" is "${bestMatch.target}" (Rating: ${(bestMatch.rating * 100).toFixed(1)}%)`);
-
         if (bestMatch.rating >= 0.6) {
             const commandTarget = appIndex[bestMatch.target];
-            const command = `start "" "${commandTarget}"`;
             
-            console.log(`[Action Handler] Executing: ${command}`);
+            // If the LLM passed a desktop number, switch to it first
+            if (desktopNumber) {
+                const pythonExecutable = path.join(__dirname, '..', 'services', 'venv', 'Scripts', 'python.exe');
+                const scriptPath = path.join(__dirname, '..', 'services', 'desktop_manager.py');
+                
+                console.log(`\x1b[90m[Action Handler] Switching to virtual desktop ${desktopNumber}...\x1b[0m`);
+                try {
+                    execSync(`"${pythonExecutable}" "${scriptPath}" ${desktopNumber}`);
+                } catch(e) {
+                    console.error("[Action Handler] Failed to switch desktop.");
+                }
+            }
+
+            const command = `start "" "${commandTarget}"`;
+            console.log(`\x1b[90m[Action Handler] Executing: ${command}\x1b[0m`);
             
             exec(command, (error) => {
                 if (error) {
-                    console.error(`[Action Handler] Error:`, error.message);
                     resolve({ success: false, message: `I encountered an error trying to open ${bestMatch.target}.` });
                 } else {
-                    resolve({ success: true, message: `I have opened ${bestMatch.target}.` });
+                    let msg = `I have opened ${bestMatch.target}.`;
+                    if (desktopNumber) msg = `I switched to desktop ${desktopNumber} and opened ${bestMatch.target}.`;
+                    resolve({ success: true, message: msg });
                 }
             });
         } else {
-            console.log(`[Action Handler] Match rating too low. Aborting.`);
-            resolve({ success: false, message: `I couldn't find an application closely matching ${appName} on your PC.` });
+            resolve({ success: false, message: `I couldn't find an application closely matching ${appName}.` });
         }
     });
 }
@@ -85,8 +96,7 @@ async function openApplication(appName) {
 async function searchWeb(query) {
     return new Promise((resolve) => {
         const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        const command = `start "" "${url}"`;
-        exec(command, (error) => {
+        exec(`start "" "${url}"`, (error) => {
             if (error) resolve({ success: false, message: `I couldn't complete the web search.` });
             else resolve({ success: true, message: `Here are the search results for ${query}.` });
         });
@@ -95,8 +105,7 @@ async function searchWeb(query) {
 
 async function lockScreen() {
     return new Promise((resolve) => {
-        const command = `rundll32.exe user32.dll,LockWorkStation`;
-        exec(command, (error) => {
+        exec(`rundll32.exe user32.dll,LockWorkStation`, (error) => {
             if (error) resolve({ success: false, message: `I failed to lock the screen.` });
             else resolve({ success: true, message: `Your workstation is locked.` });
         });
@@ -104,8 +113,7 @@ async function lockScreen() {
 }
 
 function getCurrentTime() {
-    const now = new Date();
-    return { success: true, data: now.toLocaleString() };
+    return { success: true, data: new Date().toLocaleString() };
 }
 
 async function captureScreen() {
@@ -113,23 +121,11 @@ async function captureScreen() {
         const pythonExecutable = path.join(__dirname, '..', 'services', 'venv', 'Scripts', 'python.exe');
         const scriptPath = path.join(__dirname, '..', 'services', 'screen_grab.py');
         
-        console.log(`[Action Handler] Capturing in-memory screenshot...`);
-        
         exec(`"${pythonExecutable}" "${scriptPath}"`, { maxBuffer: 1024 * 1024 * 10 }, (error, stdout, stderr) => {
-            if (error || stdout.startsWith('ERROR:')) {
-                console.error(`[Action Handler] Screen capture failed:`, error || stdout);
-                resolve({ success: false, message: "I failed to capture the screen." });
-            } else {
-                resolve({ success: true, base64: stdout.trim() });
-            }
+            if (error || stdout.startsWith('ERROR:')) resolve({ success: false, message: "Failed to capture the screen." });
+            else resolve({ success: true, base64: stdout.trim() });
         });
     });
 }
 
-module.exports = {
-    openApplication,
-    searchWeb,
-    lockScreen,
-    getCurrentTime,
-    captureScreen
-};
+module.exports = { openApplication, searchWeb, lockScreen, getCurrentTime, captureScreen };
