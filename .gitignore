@@ -1,3 +1,5 @@
 .venv/
-qwen3-tts/
+__pycache__/
 *.pyc
+.env
+qwen3-tts/
