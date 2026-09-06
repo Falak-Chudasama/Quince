@@ -1,2 +1,3 @@
 torch
 dotenv 
+websockets
