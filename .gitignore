@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 qwen3-tts/
+.vscode/

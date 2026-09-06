@@ -1,11 +1,4 @@
 from __future__ import annotations
-
-"""
-All tunables in one place. Values come from environment variables
-(loaded from .env if present) with defaults matching the original
-Quince client. Nothing here talks to hardware or the network.
-"""
-
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -57,7 +50,6 @@ class BasketSettings:
     max_size: int | None = field(default_factory=lambda: _env_int("WS_MAX_SIZE", None))
     connect_timeout: float = field(default_factory=lambda: _env_float("WS_CONNECT_TIMEOUT", 8.0))
 
-    # Reconnection behaviour
     reconnect: bool = field(default_factory=lambda: _env_bool("WS_RECONNECT", True))
     reconnect_initial_delay: float = field(default_factory=lambda: _env_float("WS_RECONNECT_INITIAL_DELAY", 1.0))
     reconnect_max_delay: float = field(default_factory=lambda: _env_float("WS_RECONNECT_MAX_DELAY", 30.0))
@@ -138,6 +130,8 @@ class Settings:
     input: InputSettings = field(default_factory=InputSettings)
     log_level: str = field(default_factory=lambda: _env_str("LOG_LEVEL", "INFO"))
 
+
+APPLICATION = os.getenv("APPLICATION", "quince")
 
 # Single shared instance — import this, don't construct your own.
 settings = Settings()

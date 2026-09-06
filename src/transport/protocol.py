@@ -1,20 +1,10 @@
 from __future__ import annotations
-
-"""
-Basket wire protocol.
-
-Outgoing messages are plain dicts serialised to JSON by the caller.
-Incoming messages are either binary (raw PCM16 TTS audio) or JSON
-text (control/status events). BasketEvent gives the rest of the
-client a typed, validated shape instead of raw dicts, so a malformed
-message from the server can't propagate as a silent no-op.
-"""
-
 import json
 from dataclasses import dataclass
 from typing import Any
+from datetime import datetime, timezone
 
-from src.config import LlmSettings, SttSettings, TtsSettings
+from src.config import LlmSettings, SttSettings, TtsSettings, APPLICATION
 from src.errors import ProtocolError
 
 
@@ -22,6 +12,12 @@ from src.errors import ProtocolError
 # OUTGOING
 # ============================================================
 
+
+def build_message() -> dict[str, Any]:
+    return {
+        "application": APPLICATION,
+        "datetime": datetime.now(timezone.utc).isoformat(),
+    }
 
 def build_start_message(
     *,
@@ -31,7 +27,9 @@ def build_start_message(
     sample_rate: int,
 ) -> dict[str, Any]:
     """The message that kicks off a voice turn."""
+    message = build_message()
     return {
+        **message,
         "type": "start",
         "prompt": stt.prompt,
         "stream": stt.stream,
@@ -55,11 +53,19 @@ def build_start_message(
 
 
 def build_stop_message() -> dict[str, Any]:
-    return {"type": "stop"}
+    message = build_message()
+    return {
+        **message,
+        "type": "stop",
+    }
 
 
 def build_cancel_message() -> dict[str, Any]:
-    return {"type": "cancel"}
+    message = build_message()
+    return {
+        **message,
+        "type": "cancel",
+    }
 
 
 # ============================================================

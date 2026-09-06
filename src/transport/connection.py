@@ -1,17 +1,5 @@
 from __future__ import annotations
-
-"""
-WebSocket connection to Basket.
-
-The original client opened one connection and died the moment it
-dropped. BasketConnection instead exposes connect()/reconnect_forever()
-so the caller can keep the client alive across drops: on any
-disconnect it retries with exponential backoff (capped) until either
-it reconnects or the caller gives up.
-"""
-
 import asyncio
-
 import websockets
 from websockets.asyncio.client import ClientConnection
 
@@ -61,7 +49,6 @@ class BasketConnection:
             ) from exc
 
         except OSError as exc:
-            # Covers connection-refused, DNS failure, unreachable host, etc.
             raise ConnectionFailedError(f"Could not reach Basket: {exc}") from exc
 
         except websockets.exceptions.WebSocketException as exc:
