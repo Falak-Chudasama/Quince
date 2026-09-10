@@ -1,32 +1,8 @@
 from __future__ import annotations
-
-"""
-QuinceClient: wires together the microphone, player, hotkey, and
-Basket connection. This file is orchestration only — the actual audio
-I/O, device pinning, and wire protocol live in their own modules.
-
-Turn state machine, in plain terms:
-  idle -> (hotkey down)  -> recording -> (hotkey up) -> pipeline busy
-  pipeline busy -> (Basket streams TTS audio) -> playback active
-  playback active -> (hotkey down) -> interrupted + recording (same press)
-  pipeline busy -> (pipeline.completed from Basket) -> idle
-
-A single press-and-hold always means "listen to me now": if Quince is
-speaking or still mid-pipeline, that same key-down interrupts it and
-starts capturing the new prompt in one motion — there is no separate
-"interrupt-only" gesture to learn.
-
-Disconnection handling: if the Basket connection drops at any point,
-the client clears turn state, closes the socket, and loops back into
-BasketConnection.connect_with_retry — the mic and hotkey stay live the
-whole time, so the user can simply try again once reconnected.
-"""
-
 import asyncio
 import json
 import queue
 import threading
-
 import websockets
 from rich.markup import escape
 
@@ -66,13 +42,6 @@ class QuinceClient:
         self._playback_interrupted = threading.Event()
         self._shutdown = asyncio.Event()
 
-        # Bumped every time a turn starts. A "cancelled" or
-        # "pipeline.completed" event from Basket carries no turn
-        # identifier of its own, so if the interrupt-and-record fast
-        # path has already moved local state on to a new turn by the
-        # time a stale server event for the *old* turn arrives, this
-        # token lets the callback recognise it's stale and ignore it
-        # instead of clearing the new turn's state out from under it.
         self._turn_token = 0
         self._pending_cancel_token: int | None = None
 
@@ -371,7 +340,7 @@ class QuinceClient:
             self.status.set(turn="idle")
 
     # ================================================================
-    # MAIN LOOP (owns reconnection)
+    # MAIN LOOP
     # ================================================================
 
     async def run(self) -> None:

@@ -72,9 +72,6 @@ def build_cancel_message() -> dict[str, Any]:
 # INCOMING
 # ============================================================
 
-# Every event type Basket is expected to send. Anything else is
-# logged and ignored rather than raising, so a Basket-side addition
-# doesn't crash the client — only a malformed *known* event does.
 KNOWN_EVENT_TYPES = {
     "ready",
     "started",

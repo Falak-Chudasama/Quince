@@ -1,18 +1,5 @@
 from __future__ import annotations
-
-"""
-Push-to-talk hotkey (default Ctrl+Q).
-
-Hold to record. Release to stop and send. A single press-and-hold
-while Quince is speaking (or still mid-pipeline) interrupts playback
-AND starts recording the new prompt in the same gesture — the user
-never has to press twice. This module only detects intent and calls
-back into whatever callbacks it's given — it has no knowledge of
-websockets, audio devices, or the pipeline state machine.
-"""
-
 from typing import Callable
-
 import keyboard
 
 from src.logging_setup import get_logger
@@ -23,13 +10,6 @@ _CTRL_NAMES = {"ctrl", "left ctrl", "right ctrl"}
 
 
 class PushToTalkHotkey:
-    """
-    Wraps the `keyboard` global hook. Callbacks are plain sync
-    functions; the caller is responsible for scheduling any async
-    work they trigger (e.g. via loop.call_soon_threadsafe), since
-    this hook fires on a background OS-level thread.
-    """
-
     def __init__(
         self,
         *,
@@ -94,9 +74,6 @@ class PushToTalkHotkey:
 
         self._latched = True
 
-        # Quince is currently speaking or mid-pipeline: one press does
-        # both — interrupt whatever is playing/processing and start
-        # listening for the new prompt immediately, as a single motion.
         if self._is_pipeline_busy() and (self._is_playback_active() or not self._is_recording()):
             self._mode = "record"
             self._on_interrupt_and_record()
