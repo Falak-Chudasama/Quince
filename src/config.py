@@ -44,6 +44,7 @@ def _env_bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class BasketSettings:
     ws_url: str = field(default_factory=lambda: _env_str("BASKET_WS_URL", "ws://127.0.0.1:7000/ws"))
+    api_url: str = field(default_factory=lambda: _env_str("BASKET_API_URL", "http://127.0.0.1:7000"))
     ping_interval: int = field(default_factory=lambda: _env_int("WS_PING_INTERVAL", 20))
     ping_timeout: int = field(default_factory=lambda: _env_int("WS_PING_TIMEOUT", 20))
     max_size: int | None = field(default_factory=lambda: _env_int("WS_MAX_SIZE", None))
@@ -109,6 +110,12 @@ class InputSettings:
 
 
 @dataclass(frozen=True)
+class McpSettings:
+    host: str = field(default_factory=lambda: _env_str("MCP_HOST", "127.0.0.1"))
+    port: int = field(default_factory=lambda: _env_int("MCP_PORT", 7100))
+
+
+@dataclass(frozen=True)
 class Settings:
     basket: BasketSettings = field(default_factory=BasketSettings)
     audio: AudioSettings = field(default_factory=AudioSettings)
@@ -116,6 +123,7 @@ class Settings:
     llm: LlmSettings = field(default_factory=LlmSettings)
     tts: TtsSettings = field(default_factory=TtsSettings)
     input: InputSettings = field(default_factory=InputSettings)
+    mcp: McpSettings = field(default_factory=McpSettings)
     log_level: str = field(default_factory=lambda: _env_str("LOG_LEVEL", "INFO"))
 
 

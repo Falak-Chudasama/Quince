@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.trace import get_trace_id
+
 """
 Logging setup, called once from run.py before anything else starts.
 
@@ -57,7 +59,7 @@ def _rich_handler(level: int) -> logging.Handler:
     class _QuinceRichHandler(RichHandler):
         def render_message(self, record, message):
             style = _LEVEL_STYLE.get(record.levelno, "log.info")
-            return Text(message, style=style)
+            return Text(f"trace={get_trace_id()} {message}", style=style)
 
     handler = _QuinceRichHandler(
         console=console,

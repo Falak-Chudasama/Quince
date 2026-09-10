@@ -6,3 +6,4 @@ rich>=13.7
 mcp
 mcp[cli]
 numpy
+httpx

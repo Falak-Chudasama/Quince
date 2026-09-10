@@ -18,6 +18,8 @@ from src.transport.event_handler import BasketEventHandler
 from src.transport.protocol import build_cancel_message, build_start_message, build_stop_message
 from src.ui.status import StatusLine, print_banner
 from src.ui.theme import console
+from quince_mcp.root_mcp import build_root
+from quince_mcp.server import MCPServer
 
 logger = get_logger("client")
 
@@ -32,6 +34,11 @@ class QuinceClient:
         self.player = PCMPlayer(settings.tts, settings.audio)
         self.connection = BasketConnection(settings.basket)
         self.status = StatusLine()
+        self.mcp_server = MCPServer(
+            build_root(settings.basket.api_url),
+            host=settings.mcp.host,
+            port=settings.mcp.port,
+        )
 
         # ----------------------------------------------------
         # Turn state
@@ -130,6 +137,7 @@ class QuinceClient:
         self._pipeline_busy.set()
         self._recording.set()
         self.status.set(turn="recording")
+        logger.info("TURN START token=%d")
         logger.info("Recording — release %s to stop.", self._settings.input.push_to_talk_hotkey)
 
     async def _stop_recording(self) -> None:
@@ -142,7 +150,7 @@ class QuinceClient:
         try:
             await self.connection.send(json.dumps(build_stop_message()))
             self.status.set(turn="thinking")
-            logger.info("Recording stopped — Basket is processing the turn.")
+            logger.info("TURN AUDIO COMPLETE — Basket processing")
         except ConnectionLostError:
             logger.warning("Lost connection to Basket while stopping a turn.")
             self._pipeline_busy.clear()
@@ -218,7 +226,7 @@ class QuinceClient:
     # ================================================================
 
     async def _microphone_sender(self) -> None:
-        logger.info("Microphone sender started.")
+        logger.info("MICROPHONE STREAM START")
 
         while not self._shutdown.is_set():
             try:
@@ -252,6 +260,7 @@ class QuinceClient:
         try:
             async for message in socket:
                 if isinstance(message, bytes):
+                    logger.debug("AUDIO RX bytes=%d", len(message))
                     self.event_handler.handle_binary(
                         message,
                         playback_interrupted=self._playback_interrupted.is_set(),
@@ -262,6 +271,7 @@ class QuinceClient:
                         self._playback_active.set()
                     continue
 
+                logger.debug("EVENT RX %r", message)
                 event = self.event_handler.handle_text(message)
 
                 if event is not None and event.type == "started":
@@ -355,6 +365,8 @@ class QuinceClient:
         try:
             self.microphone.open()
             self.player.open()
+            await self.mcp_server.start()
+            logger.info("MCP SERVER STARTED host=%s port=%d", self._settings.mcp.host, self._settings.mcp.port)
         except AudioStreamError:
             logger.exception("Fatal audio setup failure; Quince cannot start.")
             return
@@ -402,6 +414,7 @@ class QuinceClient:
                 pass
 
             self.hotkey.uninstall()
+            await self.mcp_server.stop()
             await self.connection.close()
             self.player.close()
             self.microphone.close()

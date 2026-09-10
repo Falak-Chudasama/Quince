@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 from typing import Any, Callable
 
 
 class MenuNode:
-    """One node in Quince's hierarchical MCP capability tree."""
-
     def __init__(
         self,
         id: str,
@@ -13,7 +10,7 @@ class MenuNode:
         description: str,
         handler: Callable[..., Any] | None = None,
         parameters: dict[str, Any] | None = None,
-    ) -> None:
+    ):
         self.id = id
         self.name = name
         self.description = description
@@ -38,7 +35,8 @@ class MenuNode:
         if self.handler is not None:
             raise ValueError(
                 f"'{self.id}' has a handler and can't also have children "
-                f"(tried to add '{node.id}')."
+                f"(tried to add '{node.id}') — a node must be either a "
+                f"branch or a leaf, not both."
             )
         if node.id in self.children:
             raise ValueError(f"'{self.id}' already has a child with id '{node.id}'")
