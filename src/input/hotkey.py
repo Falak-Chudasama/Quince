@@ -1,4 +1,8 @@
 from __future__ import annotations
+from typing import Callable
+import keyboard
+
+from src.logging_setup import get_logger
 
 """
 Push-to-talk hotkey (default Ctrl+Q).
@@ -11,11 +15,6 @@ back into whatever callbacks it's given — it has no knowledge of
 websockets, audio devices, or the pipeline state machine.
 """
 
-from typing import Callable
-
-import keyboard
-
-from src.logging_setup import get_logger
 
 logger = get_logger("input.hotkey")
 
@@ -23,13 +22,6 @@ _CTRL_NAMES = {"ctrl", "left ctrl", "right ctrl"}
 
 
 class PushToTalkHotkey:
-    """
-    Wraps the `keyboard` global hook. Callbacks are plain sync
-    functions; the caller is responsible for scheduling any async
-    work they trigger (e.g. via loop.call_soon_threadsafe), since
-    this hook fires on a background OS-level thread.
-    """
-
     def __init__(
         self,
         *,

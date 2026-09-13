@@ -1,24 +1,4 @@
 from __future__ import annotations
-
-"""
-Device resolution: pick a specific input device and a specific output
-device independently of each other and independently of whatever
-Windows currently calls the "default" device.
-
-Why this exists:
-Windows silently migrates BOTH the default input and default output to
-a bluetooth headset the moment it connects, and many headsets switch
-into a low-quality "hands-free" input profile at the same time. Left
-on defaults, Quince would start listening through the bluetooth mic
-instead of the laptop mic. Pinning each direction to a device name
-substring keeps mic capture on the laptop regardless of what's
-connected, while still sending TTS audio to the bluetooth device.
-
-Devices are matched by case-insensitive substring against the name
-sounddevice reports, since Windows renames the same physical device
-(driver, host API) but keeps a recognisable name fragment.
-"""
-
 import sounddevice as sd
 
 from src.errors import AudioDeviceError
@@ -28,7 +8,6 @@ logger = get_logger("audio.devices")
 
 
 def list_devices() -> list[dict]:
-    """Raw device table from PortAudio, refreshed on every call."""
     return list(sd.query_devices())
 
 

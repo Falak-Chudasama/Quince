@@ -11,8 +11,6 @@ logger = get_logger("transport.connection")
 
 
 class BasketConnection:
-    """Owns exactly one live websocket at a time, plus reconnect policy."""
-
     def __init__(self, settings: BasketSettings) -> None:
         self._settings = settings
         self._socket: ClientConnection | None = None
@@ -30,8 +28,6 @@ class BasketConnection:
     # ------------------------------------------------------------
 
     async def connect_once(self) -> ClientConnection:
-        """One connection attempt. Raises ConnectionFailedError on failure."""
-
         try:
             socket = await asyncio.wait_for(
                 websockets.connect(
@@ -63,12 +59,6 @@ class BasketConnection:
     # ------------------------------------------------------------
 
     async def connect_with_retry(self, stop_event: asyncio.Event) -> ClientConnection | None:
-        """
-        Keep attempting to connect with exponential backoff until either
-        it succeeds, stop_event is set, or reconnect_max_attempts is hit
-        (0 means unlimited). Returns None if it gave up.
-        """
-
         delay = self._settings.reconnect_initial_delay
         attempt = 0
 
@@ -98,9 +88,9 @@ class BasketConnection:
 
                 try:
                     await asyncio.wait_for(stop_event.wait(), timeout=delay)
-                    return None  # stop was requested while waiting
+                    return None
                 except asyncio.TimeoutError:
-                    pass  # normal backoff wait elapsed, try again
+                    pass
 
                 delay = min(delay * self._settings.reconnect_backoff_factor, self._settings.reconnect_max_delay)
 
@@ -111,8 +101,6 @@ class BasketConnection:
     # ------------------------------------------------------------
 
     async def send(self, message: str | bytes) -> None:
-        """Send on the current socket. Raises ConnectionLostError on failure."""
-
         socket = self._socket
         if socket is None:
             raise ConnectionLostError("Attempted to send with no active Basket connection.")

@@ -2,10 +2,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from typing import Any
-
 from dotenv import load_dotenv
 
 from src.prompts.system_prompt import DEFAULT_SYSTEM_PROMPT
+
 
 load_dotenv()
 
@@ -64,24 +64,13 @@ class AudioSettings:
     sample_width: int = field(default_factory=lambda: _env_int("AUDIO_SAMPLE_WIDTH", 2))  # PCM16
     blocksize: int = field(default_factory=lambda: _env_int("AUDIO_BLOCKSIZE", 960))
 
-    # --- Device pinning ---------------------------------------------
-    # Substring match against sounddevice device names. Case-insensitive.
-    # Leave unset (None) to fall back to the OS default device for that
-    # direction. This is what makes mic capture stick to the laptop mic
-    # and TTS playback stick to a bluetooth headset independently of
-    # each other and of the Windows "default device" setting.
     input_device: str | None = field(default_factory=lambda: _env_str("AUDIO_INPUT_DEVICE", None))
     output_device: str | None = field(default_factory=lambda: _env_str("AUDIO_OUTPUT_DEVICE", None))
 
-    # If the pinned device disappears mid-run (e.g. USB mic unplugged),
-    # fall back to the system default instead of crashing the client.
     fallback_to_default_on_missing: bool = field(
         default_factory=lambda: _env_bool("AUDIO_FALLBACK_TO_DEFAULT", True)
     )
 
-    # Re-check every N seconds that the pinned devices are still the
-    # ones actually in use (handles Windows silently rerouting a stream
-    # when a bluetooth device connects/disconnects mid-call).
     device_watchdog_interval: float = field(
         default_factory=lambda: _env_float("AUDIO_DEVICE_WATCHDOG_INTERVAL", 5.0)
     )
@@ -133,5 +122,5 @@ class Settings:
 
 APPLICATION = os.getenv("APPLICATION", "quince")
 
-# Single shared instance — import this, don't construct your own.
+
 settings = Settings()

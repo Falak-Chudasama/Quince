@@ -1,4 +1,23 @@
 from __future__ import annotations
+import asyncio
+import json
+import queue
+import threading
+import websockets
+from rich.markup import escape
+
+from src.audio.microphone import Microphone
+from src.audio.player import PCMPlayer
+from src.audio.watchdog import run_device_watchdog
+from src.config import Settings
+from src.errors import AudioStreamError, ConnectionLostError
+from src.input.hotkey import PushToTalkHotkey
+from src.logging_setup import get_logger
+from src.transport.connection import BasketConnection
+from src.transport.event_handler import BasketEventHandler
+from src.transport.protocol import build_cancel_message, build_start_message, build_stop_message
+from src.ui.status import StatusLine, print_banner
+from src.ui.theme import console
 
 """
 QuinceClient: wires together the microphone, player, hotkey, and
@@ -21,27 +40,6 @@ the client clears turn state, closes the socket, and loops back into
 BasketConnection.connect_with_retry — the mic and hotkey stay live the
 whole time, so the user can simply try again once reconnected.
 """
-
-import asyncio
-import json
-import queue
-import threading
-
-import websockets
-from rich.markup import escape
-
-from src.audio.microphone import Microphone
-from src.audio.player import PCMPlayer
-from src.audio.watchdog import run_device_watchdog
-from src.config import Settings
-from src.errors import AudioStreamError, ConnectionLostError
-from src.input.hotkey import PushToTalkHotkey
-from src.logging_setup import get_logger
-from src.transport.connection import BasketConnection
-from src.transport.event_handler import BasketEventHandler
-from src.transport.protocol import build_cancel_message, build_start_message, build_stop_message
-from src.ui.status import StatusLine, print_banner
-from src.ui.theme import console
 
 logger = get_logger("client")
 
@@ -180,19 +178,6 @@ class QuinceClient:
             self.status.set(turn="idle")
 
     async def _interrupt_and_start_recording(self) -> None:
-        """
-        One press-and-hold, two effects: whatever Quince is doing right
-        now (speaking or still mid-pipeline) is cut off immediately,
-        and the mic starts capturing the new prompt in the same motion
-        — no need to release and press again.
-
-        Turn state is reset locally and synchronously rather than
-        waiting for Basket's "cancelled" acknowledgement, so the new
-        recording starts the instant the key goes down instead of
-        after a network round trip. The cancel message is still sent
-        so Basket drops the old turn server-side too.
-        """
-
         if self._pipeline_busy.is_set():
             logger.info("Interrupting current Quince turn to start a new one.")
             self._playback_interrupted.set()
@@ -413,7 +398,6 @@ class QuinceClient:
 
                 try:
                     await self._run_session()
-                    # _run_session only returns cleanly on shutdown.
                     break
 
                 except ConnectionLostError as exc:

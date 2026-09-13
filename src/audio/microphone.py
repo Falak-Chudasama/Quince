@@ -23,8 +23,6 @@ logger = get_logger("audio.microphone")
 
 
 class Microphone:
-    """Owns the input stream and a thread-safe queue of raw PCM16 chunks."""
-
     def __init__(self, settings: AudioSettings) -> None:
         self._settings = settings
         self.queue: queue.Queue[bytes] = queue.Queue()
