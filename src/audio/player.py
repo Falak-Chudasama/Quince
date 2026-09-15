@@ -1,14 +1,5 @@
 from __future__ import annotations
 
-"""
-TTS playback.
-
-Always opened against a pinned device index (typically a bluetooth
-headset) independent of whatever device the microphone is pinned to
-and independent of the input stream entirely — the two streams do not
-have to be the same device or even the same host API.
-"""
-
 import queue
 import threading
 
@@ -24,11 +15,12 @@ logger = get_logger("audio.player")
 
 class PCMPlayer:
     """
-    Continuous PCM16 output stream for TTS playback.
+    Low-latency PCM16 playback for Pocket TTS.
 
-    Audio arrives in small binary chunks and is queued; interrupt()
-    silences output immediately and drops anything still queued,
-    without tearing down the underlying stream.
+    Pocket TTS natively produces 24 kHz mono PCM. We keep that source format
+    untouched through the WebSocket and hand it directly to PortAudio as
+    int16. On Windows WASAPI shared mode, PortAudio can use the system mixer
+    conversion only when the physical endpoint requires it.
     """
 
     def __init__(self, tts_settings: TtsSettings, audio_settings: AudioSettings) -> None:
@@ -46,35 +38,60 @@ class PCMPlayer:
 
         self._stream: sd.RawOutputStream | None = None
         self._device_index: int | None = None
+        self._wasapi_settings = None
+
+    def _make_wasapi_settings(self):
+        if not hasattr(sd, "WasapiSettings"):
+            return None
+
+        return sd.WasapiSettings(
+            exclusive=self._audio_settings.wasapi_exclusive,
+            auto_convert=self._audio_settings.wasapi_auto_convert,
+        )
 
     # ------------------------------------------------------------
     # LIFECYCLE
     # ------------------------------------------------------------
 
     def open(self) -> None:
+        host_api = self._audio_settings.output_host_api or self._audio_settings.host_api
+
         self._device_index = resolve_output_device(
             self._audio_settings.output_device,
             self._audio_settings.fallback_to_default_on_missing,
+            host_api,
         )
 
+        self._wasapi_settings = self._make_wasapi_settings()
+
         try:
-            self._stream = sd.RawOutputStream(
+            kwargs = dict(
                 samplerate=self._tts_settings.sample_rate,
                 channels=self._tts_settings.channels,
                 dtype="int16",
                 device=self._device_index,
                 blocksize=self._audio_settings.blocksize,
+                latency=self._audio_settings.output_latency,
                 callback=self._callback,
+                clip_off=False,
+                dither_off=True,
             )
+
+            if self._wasapi_settings is not None and host_api:
+                kwargs["extra_settings"] = self._wasapi_settings
+
+            self._stream = sd.RawOutputStream(**kwargs)
             self._stream.start()
 
         except Exception as exc:
             raise AudioStreamError(f"Failed to open TTS playback stream: {exc}") from exc
 
         logger.info(
-            "TTS playback ready: %d Hz mono PCM16 (device index=%s)",
+            "TTS playback ready: %d Hz mono PCM16 (device index=%s, host_api=%s, blocksize=%d)",
             self._tts_settings.sample_rate,
             self._device_index,
+            host_api,
+            self._audio_settings.blocksize,
         )
 
     def close(self) -> None:
@@ -104,7 +121,7 @@ class PCMPlayer:
 
     def _callback(self, outdata, frames: int, time_info, status) -> None:
         if status:
-            logger.debug("TTS output stream status: %s", status)
+            logger.warning("TTS output stream status: %s", status)
 
         output_bytes = len(outdata)
 
@@ -113,29 +130,33 @@ class PCMPlayer:
             return
 
         with self._lock:
-            while self._current_offset >= len(self._current_chunk):
-                try:
-                    self._current_chunk = self._queue.get_nowait()
-                    self._current_offset = 0
-                except queue.Empty:
-                    self._current_chunk = b""
-                    self._current_offset = 0
+            remaining_output = output_bytes
+            output_offset = 0
+
+            while remaining_output > 0:
+                while self._current_offset >= len(self._current_chunk):
+                    try:
+                        self._current_chunk = self._queue.get_nowait()
+                        self._current_offset = 0
+                    except queue.Empty:
+                        self._current_chunk = b""
+                        self._current_offset = 0
+                        break
+
+                if not self._current_chunk:
+                    outdata[output_offset:] = b"\x00" * remaining_output
                     break
 
-            if not self._current_chunk:
-                outdata[:] = b"\x00" * output_bytes
-                return
+                remaining_chunk = len(self._current_chunk) - self._current_offset
+                copy_size = min(remaining_chunk, remaining_output)
 
-            remaining = len(self._current_chunk) - self._current_offset
-            copy_size = min(remaining, output_bytes)
+                outdata[output_offset:output_offset + copy_size] = self._current_chunk[
+                    self._current_offset:self._current_offset + copy_size
+                ]
 
-            outdata[:copy_size] = self._current_chunk[
-                self._current_offset : self._current_offset + copy_size
-            ]
-            self._current_offset += copy_size
-
-            if copy_size < output_bytes:
-                outdata[copy_size:] = b"\x00" * (output_bytes - copy_size)
+                self._current_offset += copy_size
+                output_offset += copy_size
+                remaining_output -= copy_size
 
     # ------------------------------------------------------------
     # QUEUE CONTROL
@@ -144,10 +165,9 @@ class PCMPlayer:
     def enqueue(self, audio: bytes) -> None:
         if not audio or self._closed.is_set() or self._interrupted.is_set():
             return
-        self._queue.put(bytes(audio))
+        self._queue.put(audio)
 
     def interrupt(self) -> None:
-        """Immediately silence output and drop anything queued."""
         self._interrupted.set()
         with self._lock:
             self._current_chunk = b""
@@ -175,10 +195,14 @@ class PCMPlayer:
     # ------------------------------------------------------------
 
     def device_still_valid(self) -> bool:
-        return device_still_matches(self._device_index, self._audio_settings.output_device)
+        host_api = self._audio_settings.output_host_api or self._audio_settings.host_api
+        return device_still_matches(
+            self._device_index,
+            self._audio_settings.output_device,
+            host_api,
+        )
 
     def reopen(self) -> None:
-        """Tear down the underlying stream and open it again, same settings."""
         logger.warning("Reopening TTS playback stream (device changed or dropped).")
 
         if self._stream is not None:
