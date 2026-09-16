@@ -118,9 +118,9 @@ class SttSettings:
 class LlmSettings:
     model: str | None = field(default_factory=lambda: _env_str("LLM_MODEL", None))
     messages: list[dict[str, Any]] = field(default_factory=list)
-    temperature: float | None = field(default_factory=lambda: _env_float("LLM_TEMPERATURE", 0.6))
+    temperature: float | None = field(default_factory=lambda: _env_float("LLM_TEMPERATURE", 0.3))
     top_p: float | None = field(default_factory=lambda: _env_float("LLM_TOP_P", 1.0))
-    max_tokens: int | None = field(default_factory=lambda: _env_int("LLM_MAX_TOKENS", 180))
+    max_tokens: int | None = field(default_factory=lambda: _env_int("LLM_MAX_TOKENS", 500))
     stop: Any | None = None
     seed: int | None = field(default_factory=lambda: _env_int("LLM_SEED", None))
     system_prompt: str = field(default_factory=lambda: _env_str("LLM_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT))
