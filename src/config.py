@@ -108,7 +108,7 @@ class SttSettings:
     prompt: str | None = field(
         default_factory=lambda: _env_str(
             "STT_PROMPT",
-            "Transcribe the spoken audio accurately in English. Return only the words that were spoken. Do not translate, summarize, or invent words.",
+            "Your name is Quince, Transcribe the spoken audio accurately in English. Return only the words that were spoken. Do not translate, summarize, or invent words.",
         )
     )
     stream: bool = field(default_factory=lambda: _env_bool("STT_STREAM", True))
