@@ -129,7 +129,7 @@ class LlmSettings:
 
 @dataclass(frozen=True)
 class TtsSettings:
-    voice: str = field(default_factory=lambda: _env_str("TTS_VOICE", "jane"))
+    voice: str = field(default_factory=lambda: _env_str("TTS_VOICE", "eve"))
     temperature: float = field(default_factory=lambda: _env_float("TTS_TEMPERATURE", 0.5))
 
     # Pocket TTS natively generates 24 kHz mono 16-bit PCM/WAV. Keep that
