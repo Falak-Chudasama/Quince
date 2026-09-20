@@ -13,6 +13,7 @@ command = Tool(
         "command": "string",
         "is_persistent": "boolean"
     },
+    type="leaf",
     handler=save_command,
 )
 
@@ -22,5 +23,6 @@ long_term_mem = Tool(
     arguments_types={
         "memory": "string",
     },
+    type="leaf",
     handler=save_long_term,
 )
