@@ -1,16 +1,19 @@
-from quince_mcp.schemas.tool import Tool
+from quince_mcp.schemas.tool import QuinceTool
 
-chat = Tool(
+chat = QuinceTool(
     tool_id="root.chat",
-    description="If user does not need any other tasks to be done, and just needs a simple response from you, choose this option"
+    description="If user does not need any other tasks to be done, and just needs a simple response from you, choose this option",
+    kind="leaf",
 )
 
-terminate = Tool(
+terminate = QuinceTool(
     tool_id="terminate",
     description="If everything in the prompt has been executed, choose this option",
+    kind="leaf",
 )
 
-reset = Tool(
+reset = QuinceTool(
     tool_id="reset",
     description="If the tool you are looking for or its category or subcategory does not exist here, choose this option",
+    kind="leaf",
 )
