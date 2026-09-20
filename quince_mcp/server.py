@@ -2,18 +2,19 @@ from typing import Any
 from mcp.server import MCPServer
 
 from quince_mcp.schemas.tool import Tool
-from quince_mcp.tools.util import terminate, reset
+from quince_mcp.tools.util import terminate, reset, chat
 # from quince_mcp.tools.system.system import SYSTEM_TOOLS_TREE
 
 
 mcp = MCPServer("Quince MCP")
 
-root = Tool(tool_id="root", description="", children=[])
+root = Tool(tool_id="root", description="", children=[chat])
 
 TOOL_TREE = {
     "root": root,
     "terminate": terminate,
     "reset": reset,
+    "root.chat": chat
     # **SYSTEM_TOOLS_TREE
 }
 

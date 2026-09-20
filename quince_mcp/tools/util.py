@@ -1,5 +1,9 @@
 from quince_mcp.schemas.tool import Tool
 
+chat = Tool(
+    tool_id="root.chat",
+    description="If user does not need any other tasks to be done, and just needs a simple response from you, choose this option"
+)
 
 terminate = Tool(
     tool_id="terminate",
