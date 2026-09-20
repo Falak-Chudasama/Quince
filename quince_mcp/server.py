@@ -1,35 +1,19 @@
 from typing import Any
 from mcp.server import MCPServer
 
-from quince_mcp.schemas.tool import QuinceTool
-from quince_mcp.tools.util import terminate, reset, chat
-# from quince_mcp.tools.system.system import SYSTEM_TOOLS_TREE
+from quince_mcp.tool_tree import TOOL_TREE
+from quince_mcp.tools.util import terminate, reset, chat, terminate_summary, reset_summary
 
 
 mcp = MCPServer("Quince MCP")
 
-root = QuinceTool(tool_id="root", kind="category", description="", children=[chat])
-
-TOOL_TREE = {
-    "root": root,
-    "terminate": terminate,
-    "reset": reset,
-    "root.chat": chat
-    # **SYSTEM_TOOLS_TREE
-}
-
-
-terminate_summary = { "tool_id": terminate.tool_id, "description": terminate.description, "arguments": terminate.arguments }
-reset_summary = { "tool_id": reset.tool_id, "description": reset.description, "arguments": reset.arguments }
-ALWAYS_AVAILABLE = [terminate_summary, reset_summary]
-
 
 @mcp.tool()
 async def navigate(tool_id: str, arguments: dict[str, Any] | None = None):
-    if tool_id == "terminate":
+    if tool_id == "terminate" or tool_id == "root.chat":
         return {
             "children": [],
-            "message": "Execution terminated",
+            "message": "Loop terminated",
             "was_category_call": False,
             "terminate": True,
             "success": True
@@ -70,7 +54,7 @@ async def navigate(tool_id: str, arguments: dict[str, Any] | None = None):
                     "required_arguments": c.required_arguments,
                 }
                 for c in tool.children
-            ] + ALWAYS_AVAILABLE
+            ] + [terminate_summary, reset_summary]
         }
 
     try:

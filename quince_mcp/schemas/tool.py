@@ -53,26 +53,3 @@ class QuinceTool:
             return await result
 
         return result
-
-# Exmaple
-
-# file_search = Tool(
-#     tool_id="root.filesystem.search",
-#     description="If user wants you to search a file in the filesystem, choose this",
-#     handler=search_file,
-#     arguments_types={
-#         "folder_path": "string",
-#         "query": "string",
-#         "file_name": "string",
-#         "extension": "string"
-#     },
-#     required_arguments=["folder_path", "query"],
-#     children=[terminate, reset],
-# )
-
-# folder_system = Tool(
-#     tool_id="root.filesystem",
-#     description="If user wants file or folder related operations to be done, choose this",
-#     type="category",
-#     children=[terminate, reset, file_search]
-# )

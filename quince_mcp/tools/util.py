@@ -17,3 +17,8 @@ reset = QuinceTool(
     description="If the tool you are looking for or its category or subcategory does not exist here, choose this option",
     kind="leaf",
 )
+
+terminate_summary = { "tool_id": terminate.tool_id, "description": terminate.description, "arguments": terminate.arguments }
+reset_summary = { "tool_id": reset.tool_id, "description": reset.description, "arguments": reset.arguments }
+
+DEFAULT_UTILITY = [terminate, reset]
