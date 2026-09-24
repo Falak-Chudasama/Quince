@@ -1,4 +1,6 @@
 import psutil
+import pynvml
+from typing import Any
 
 # CPU
 def _get_cpu_usage():
@@ -6,6 +8,7 @@ def _get_cpu_usage():
 
     return {
         "cpu_usage": usage,
+        "cpu_name": "Ryzen 7 5800H",
         "physical_cores": psutil.cpu_count(logical=False),
         "logical_cores": psutil.cpu_count(logical=True)
     }
@@ -15,7 +18,51 @@ def _get_cpu_temp():
     pass
 
 # GPU
+def _get_gpu_stats(gpu_name: str):
+    pynvml.nvmlInit()
 
+    try:
+        gpu_count = pynvml.nvmlDeviceGetCount()
+        gpus: list[dict[str, Any]] = []
+
+        for i in range(gpu_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+
+            name = pynvml.nvmlDeviceGetName(handle)
+
+            if not (gpu_name == name or gpu_name == "all"):
+                continue
+
+            if isinstance(name, bytes):
+                name = name.decode('utf-8', errors="replace")
+
+            temperature = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+
+            utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
+
+            memory = pynvml.nvmlDeviceGetMemoryInfo(handle)
+
+            gpus.append({
+                "gpu_name": name,
+                "gpu_temperature": temperature,
+                "gpu_usage_percent": utilization.gpu,
+                "gpu_memory_percent": utilization.memory,
+                "vram_total_bytes": memory.total,
+                "vram_used_bytes": memory.used,
+                "vram_free_bytes": memory.free,
+                "vram_usage_percent": (
+                    memory.used / memory.total * 100
+                    if memory.total
+                    else 0.0
+                ),
+            })
+        return {
+            "gpu_count": gpu_count,
+            "gpus": gpus
+        }
+
+    finally:
+        pynvml.nvmlShutdown()
 
 # MEMORY
 def _get_ram_usage():
@@ -30,37 +77,7 @@ def _get_ram_usage():
 
 # NETWORK
 def _get_network_status():
-    interface_stats = psutil.net_if_stats()
-    interface_addresses = psutil.net_if_addrs()
-
-    interfaces = []
-
-    for name, stats in interface_stats.items():
-        addresses = []
-
-        for address in interface_addresses.get(name, []):
-            addresses.append(
-                {
-                    "family": str(address.family),
-                    "address": address.address,
-                    "netmask": address.netmask,
-                    "broadcast": address.broadcast,
-                }
-            )
-
-        interfaces.append(
-            {
-                "name": name,
-                "is_up": stats.isup,
-                "speed_mbps": stats.speed,
-                "mtu": stats.mtu,
-                "addresses": addresses,
-            }
-        )
-
-    return {
-        "interfaces": interfaces,
-    }
+    pass
 
 # BATTERY
 def _get_battery_level():
