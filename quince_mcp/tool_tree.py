@@ -1,5 +1,6 @@
 from quince_mcp.schemas.tool import QuinceTool
 from quince_mcp.tools.util import terminate, reset, chat
+from quince_mcp.tools.system.tools import system_tool_tree
 
 
 root = QuinceTool(
@@ -15,4 +16,5 @@ TOOL_TREE = {
     "terminate": terminate,
     "reset": reset,
     "root.chat": chat,
+    **system_tool_tree
 }
