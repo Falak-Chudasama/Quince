@@ -118,7 +118,7 @@ class SttSettings:
 class LlmSettings:
     model: str | None = field(default_factory=lambda: _env_str("LLM_MODEL", None))
     messages: list[dict[str, Any]] = field(default_factory=list)
-    temperature: float | None = field(default_factory=lambda: _env_float("LLM_TEMPERATURE", 0.3))
+    temperature: float | None = field(default_factory=lambda: _env_float("LLM_TEMPERATURE", 0.05))
     top_p: float | None = field(default_factory=lambda: _env_float("LLM_TOP_P", 1.0))
     max_tokens: int | None = field(default_factory=lambda: _env_int("LLM_MAX_TOKENS", 500))
     stop: Any | None = None
@@ -130,7 +130,7 @@ class LlmSettings:
 @dataclass(frozen=True)
 class TtsSettings:
     voice: str = field(default_factory=lambda: _env_str("TTS_VOICE", "eve"))
-    temperature: float = field(default_factory=lambda: _env_float("TTS_TEMPERATURE", 0.5))
+    temperature: float = field(default_factory=lambda: _env_float("TTS_TEMPERATURE", 0.75))
 
     # Pocket TTS natively generates 24 kHz mono 16-bit PCM/WAV. Keep that
     # format intact through Basket and Quince instead of downsampling it.
