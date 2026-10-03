@@ -94,17 +94,6 @@ get_disk_usage = QuinceTool(
     required_arguments=[]
 )
 
-get_network_status = QuinceTool(
-    tool_id="root.system.get_network_status",
-    description=(
-        "Returns the current state of the computer's network interfaces, including whether "
-        "interfaces are up, link speed, MTU, and assigned addresses. Use for questions about "
-        "network adapters, Wi-Fi or Ethernet interface status, or local network interface information. "
-        "Do not use this tool to claim that the internet is reachable."
-    ),
-    handler=_get_network_status
-)
-
 get_datetime = QuinceTool(
     tool_id="root.system.get_datetime",
     description=(
@@ -150,7 +139,6 @@ system = QuinceTool(
         get_cpu_usage,
         get_cpu_temp,
         get_disk_usage,
-        get_network_status,
         get_datetime,
         get_running_processes
     ]
@@ -168,8 +156,6 @@ system_tool_tree = {
     "root.system.get_battery_level": get_battery_level,
     
     "root.system.get_disk_usage": get_disk_usage,
-    
-    "root.system.get_network_status": get_network_status,
     
     "root.system.get_datetime": get_datetime,
     
