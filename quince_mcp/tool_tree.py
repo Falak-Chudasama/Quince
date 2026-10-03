@@ -20,7 +20,7 @@ TOOL_TREE = {
     "root": root,
     "terminate": terminate,
     "reset": reset,
-    "root.chat": chat,
+    "root--chat": chat,
     **system_tool_tree,
     **memory_tool_tree
 }

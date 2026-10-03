@@ -12,8 +12,12 @@ from .handlers import (
     _get_running_processes,
 )
 
+
+base_tool_id = "root--system"
+
+
 get_cpu_usage = QuinceTool(
-    tool_id="root.system.get_cpu_usage",
+    tool_id=f"{base_tool_id}--get-cpu-usage",
     description=(
         "Returns current CPU usage/utilization as a percentage and CPU core count. "
         "Use for CPU usage, processor usage, CPU load, or how busy the CPU is. "
@@ -23,7 +27,7 @@ get_cpu_usage = QuinceTool(
 )
 
 get_cpu_temp = QuinceTool(
-    tool_id="root.system.get_cpu_temp",
+    tool_id=f"{base_tool_id}--get-cpu-temp",
     description=(
         "Returns the current CPU temperature in Celsius. "
         "Use only when the user asks about CPU temperature, processor temperature, "
@@ -33,7 +37,7 @@ get_cpu_temp = QuinceTool(
 )
 
 get_ram_usage = QuinceTool(
-    tool_id="root.system.get_ram_usage",
+    tool_id=f"{base_tool_id}--get-ram-usage",
     description=(
         "Returns current SYSTEM RAM usage including used, available, total, and usage percentage. "
         "Use for RAM, system memory, main memory, available memory, or how much memory the computer has. "
@@ -43,7 +47,7 @@ get_ram_usage = QuinceTool(
 )
 
 get_gpu_stats = QuinceTool(
-    tool_id="root.system.get_gpu_stats",
+    tool_id=f"{base_tool_id}--get-gpu-stats",
     description=(
         "Returns GPU utilization, GPU temperature, VRAM usage, VRAM capacity, and GPU memory utilization. "
         "Use for GPU usage, GPU temperature, VRAM, graphics memory, or GPU memory questions. "
@@ -65,7 +69,7 @@ get_gpu_stats = QuinceTool(
 )
 
 get_battery_level = QuinceTool(
-    tool_id="root.system.get_battery_level",
+    tool_id=f"{base_tool_id}--get-battery-level",
     description=(
         "Returns current battery percentage, charging or plugged-in state, and estimated "
         "remaining battery time when available. Use only for battery level, battery status, "
@@ -75,7 +79,7 @@ get_battery_level = QuinceTool(
 )
 
 get_disk_usage = QuinceTool(
-    tool_id="root.system.get_disk_usage",
+    tool_id=f"{base_tool_id}--get-disk-usage",
     description=(
         "Returns disk usage for a drive including total, used, free, and usage percentage. "
         "Use when the user asks about storage space, disk space, free space, used space, "
@@ -95,7 +99,7 @@ get_disk_usage = QuinceTool(
 )
 
 get_datetime = QuinceTool(
-    tool_id="root.system.get_datetime",
+    tool_id=f"{base_tool_id}--get-datetime",
     description=(
         "Returns the current local date, time, timezone, UTC offset, and ISO timestamp of this computer. "
         "Use when the user asks for the current date, current time, local time, timezone, or today's date."
@@ -104,7 +108,7 @@ get_datetime = QuinceTool(
 )
 
 get_running_processes = QuinceTool(
-    tool_id="root.system.get_running_processes",
+    tool_id=f"{base_tool_id}--get-running-processes",
     description=(
         "Returns currently running processes on this computer including process ID, name, and status. "
         "Use when the user asks what programs or processes are running, whether a process is running, "
@@ -124,7 +128,7 @@ get_running_processes = QuinceTool(
 )
 
 system = QuinceTool(
-    tool_id="root.system",
+    tool_id=base_tool_id,
     description=(
         "Use for live system and hardware telemetry from THIS computer, including CPU usage, "
         "CPU temperature, RAM usage, GPU usage, GPU temperature, VRAM usage, battery status, "
@@ -145,19 +149,14 @@ system = QuinceTool(
 )
 
 system_tool_tree = {
-    "root.system": system,
-    "root.system.get_cpu_usage": get_cpu_usage,
-    "root.system.get_cpu_temp": get_cpu_temp,
+    f"{base_tool_id}": system,
 
-    "root.system.get_ram_usage": get_ram_usage,
-    
-    "root.system.get_gpu_stats": get_gpu_stats,
-    
-    "root.system.get_battery_level": get_battery_level,
-    
-    "root.system.get_disk_usage": get_disk_usage,
-    
-    "root.system.get_datetime": get_datetime,
-    
-    "root.system.get_running_processes": get_running_processes,
+    f"{base_tool_id}--get-cpu-usage": get_cpu_usage,
+    f"{base_tool_id}--get-cpu-temp": get_cpu_temp,
+    f"{base_tool_id}--get-ram-usage": get_ram_usage,
+    f"{base_tool_id}--get-gpu-stats": get_gpu_stats,
+    f"{base_tool_id}--get-battery-level": get_battery_level,
+    f"{base_tool_id}--get-disk-usage": get_disk_usage,
+    f"{base_tool_id}--get-datetime": get_datetime,
+    f"{base_tool_id}--get-running-processes": get_running_processes,
 }

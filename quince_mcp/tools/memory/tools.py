@@ -2,18 +2,18 @@ from quince_mcp.schemas.tool import QuinceTool
 from quince_mcp.apis.basket import basket_client
 
 
-base_tool_id = "root.memory"
+base_tool_id = "root--memory"
 
 
 add_memory = QuinceTool(
-    tool_id=f"{base_tool_id}.add_memory",
+    tool_id=f"{base_tool_id}--add-memory",
     description=(
         "STORE A FACT, PREFERENCE, OR PIECE OF INFORMATION. "
         "Use ONLY when the user explicitly asks Quince to remember, save, retain, "
         "or store information about the user, their preferences, projects, circumstances, "
         "or another factual piece of context. "
         "DO NOT use this tool for behavioral rules or instructions telling Quince HOW TO RESPOND "
-        "or WHAT TO DO. Behavioral rules belong to root.memory.add_command. "
+        "or WHAT TO DO. Behavioral rules belong to root--memory--add-command. "
         "Examples: 'Remember that I prefer dark mode.' "
         "'Remember that my project uses MongoDB.' "
         "'Remember that I am a B.Tech IT student.' "
@@ -52,7 +52,7 @@ add_memory = QuinceTool(
 
 
 get_all_memory = QuinceTool(
-    tool_id=f"{base_tool_id}.get_all_memory",
+    tool_id=f"{base_tool_id}--get-all-memory",
     description=(
         "READ STORED MEMORIES. "
         "Use when the user asks what Quince remembers, asks to see stored memories, "
@@ -66,32 +66,32 @@ get_all_memory = QuinceTool(
 
 
 delete_memory = QuinceTool(
-    tool_id=f"{base_tool_id}.delete_memory",
+    tool_id=f"{base_tool_id}--delete-memory",
     description=(
         "DELETE ONE SPECIFIC STORED MEMORY. "
         "Use only when the user wants one particular fact, preference, or memory removed. "
-        "Always call root.memory.get_all_memory first when the user identifies the target "
+        "Always call root--memory--get-all-memory first when the user identifies the target "
         "by meaning, description, topic, wording, or fuzzy language. "
-        "Use only an ID returned by get_all_memory. Never invent or guess an ID. "
+        "Use only an ID returned by root--memory--get-all-memory. Never invent or guess an ID. "
         "Do not use this tool to delete all memories."
     ),
     handler=basket_client.delete_memory,
     arguments={
-        "memory_id": {
+        "memory-id": {
             "type": "string",
             "description": (
                 "The exact ID of the memory to delete. "
-                "Obtain it from root.memory.get_all_memory and match the user's description "
+                "Obtain it from root--memory--get-all-memory and match the user's description "
                 "against the returned memory contents. Never fabricate or guess an ID."
             )
         }
     },
-    required_arguments=["memory_id"]
+    required_arguments=["memory-id"]
 )
 
 
 delete_all_memory = QuinceTool(
-    tool_id=f"{base_tool_id}.delete_all_memory",
+    tool_id=f"{base_tool_id}--delete-all-memory",
     description=(
         "DELETE ALL STORED MEMORIES. "
         "Use ONLY when the user explicitly asks to erase, forget, clear, or delete "
@@ -103,7 +103,7 @@ delete_all_memory = QuinceTool(
 
 
 add_command = QuinceTool(
-    tool_id=f"{base_tool_id}.add_command",
+    tool_id=f"{base_tool_id}--add-command",
     description=(
         "STORE A BEHAVIORAL RULE OR INSTRUCTION FOR QUINCE. "
         "Use ONLY when the user explicitly asks Quince to remember, save, retain, "
@@ -113,7 +113,7 @@ add_command = QuinceTool(
         "'When I ask for code, include comments.' "
         "'Whenever I say X, do Y.' "
         "DO NOT use this tool for ordinary facts, preferences, or personal information. "
-        "Those belong to root.memory.add_memory. "
+        "Those belong to root--memory--add-memory. "
         "If the stored text tells Quince WHAT TO DO or HOW TO BEHAVE, it is a COMMAND. "
         "If it tells Quince SOMETHING THAT IS TRUE or PREFERRED, it is a MEMORY."
     ),
@@ -148,7 +148,7 @@ add_command = QuinceTool(
 
 
 get_all_commands = QuinceTool(
-    tool_id=f"{base_tool_id}.get_all_commands",
+    tool_id=f"{base_tool_id}--get-all-commands",
     description=(
         "READ STORED BEHAVIORAL COMMANDS. "
         "Use when the user asks what rules, instructions, or behavioral commands "
@@ -161,32 +161,32 @@ get_all_commands = QuinceTool(
 
 
 delete_command = QuinceTool(
-    tool_id=f"{base_tool_id}.delete_command",
+    tool_id=f"{base_tool_id}--delete-command",
     description=(
         "DELETE ONE SPECIFIC STORED BEHAVIORAL COMMAND. "
         "Use only when the user wants one particular stored rule or instruction removed. "
-        "Always call root.memory.get_all_commands first when the user identifies the target "
+        "Always call root--memory--get-all-commands first when the user identifies the target "
         "by meaning, description, wording, behavior, or fuzzy language. "
-        "Use only an ID returned by get_all_commands. Never invent or guess an ID. "
+        "Use only an ID returned by root--memory--get-all-commands. Never invent or guess an ID. "
         "Do not use this tool to delete all commands."
     ),
     handler=basket_client.delete_command,
     arguments={
-        "command_id": {
+        "command-id": {
             "type": "string",
             "description": (
                 "The exact ID of the command to delete. "
-                "Obtain it from root.memory.get_all_commands and match the user's description "
+                "Obtain it from root--memory--get-all-commands and match the user's description "
                 "against the returned command contents. Never fabricate or guess an ID."
             )
         }
     },
-    required_arguments=["command_id"]
+    required_arguments=["command-id"]
 )
 
 
 delete_all_commands = QuinceTool(
-    tool_id=f"{base_tool_id}.delete_all_commands",
+    tool_id=f"{base_tool_id}--delete-all-commands",
     description=(
         "DELETE ALL STORED BEHAVIORAL COMMANDS. "
         "Use ONLY when the user explicitly asks to erase, forget, clear, or delete "
@@ -207,14 +207,14 @@ memory = QuinceTool(
         "COMMAND = something Quince must DO, FOLLOW, AVOID, or HOW IT MUST BEHAVE. "
         "Examples: 'Always greet me warmly', 'Never use emojis', "
         "'When I ask for code, include comments'. "
-        "Use add_memory for facts, preferences, and context. "
-        "Use add_command for behavioral rules and instructions. "
-        "Use get_all_memory to read memories. "
-        "Use get_all_commands to read commands. "
-        "When deleting one item, first call the corresponding get_all tool to obtain its real ID, "
+        "Use root--memory--add-memory for facts, preferences, and context. "
+        "Use root--memory--add-command for behavioral rules and instructions. "
+        "Use root--memory--get-all-memory to read memories. "
+        "Use root--memory--get-all-commands to read commands. "
+        "When deleting one item, first call the corresponding get-all tool to obtain its real ID, "
         "then call the corresponding delete tool. Never invent an ID. "
-        "Use delete_all_memory only for deleting all memories. "
-        "Use delete_all_commands only for deleting all commands."
+        "Use root--memory--delete-all-memory only for deleting all memories. "
+        "Use root--memory--delete-all-commands only for deleting all commands."
     ),
     kind="category",
     children=[
@@ -233,13 +233,13 @@ memory = QuinceTool(
 memory_tool_tree = {
     f"{base_tool_id}": memory,
 
-    f"{base_tool_id}.add_memory": add_memory,
-    f"{base_tool_id}.get_all_memory": get_all_memory,
-    f"{base_tool_id}.delete_memory": delete_memory,
-    f"{base_tool_id}.delete_all_memory": delete_all_memory,
+    f"{base_tool_id}--add-memory": add_memory,
+    f"{base_tool_id}--get-all-memory": get_all_memory,
+    f"{base_tool_id}--delete-memory": delete_memory,
+    f"{base_tool_id}--delete-all-memory": delete_all_memory,
 
-    f"{base_tool_id}.add_command": add_command,
-    f"{base_tool_id}.get_all_commands": get_all_commands,
-    f"{base_tool_id}.delete_command": delete_command,
-    f"{base_tool_id}.delete_all_commands": delete_all_commands,
+    f"{base_tool_id}--add-command": add_command,
+    f"{base_tool_id}--get-all-commands": get_all_commands,
+    f"{base_tool_id}--delete-command": delete_command,
+    f"{base_tool_id}--delete-all-commands": delete_all_commands,
 }

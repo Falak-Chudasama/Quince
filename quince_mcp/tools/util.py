@@ -1,7 +1,7 @@
 from quince_mcp.schemas.tool import QuinceTool
 
 chat = QuinceTool(
-    tool_id="root.chat",
+    tool_id="root--chat",
     description="If user does not need any other tasks to be done, and just needs a simple response from you, or you find user's query too vague and confused, choose this rather safer option",
     kind="leaf",
 )
