@@ -10,7 +10,7 @@ mcp = MCPServer("Quince MCP")
 
 @mcp.tool()
 async def navigate(tool_id: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-    if tool_id == "terminate" or tool_id == "root.chat":
+    if tool_id == "terminate" or tool_id == "root--chat":
         return build_message(
             children=[],
             message="Loop Terminate",
@@ -56,8 +56,6 @@ async def navigate(tool_id: str, arguments: dict[str, Any] | None = None) -> dic
 
     try:
         result = await tool.execute(arguments or {})
-        print(result)
-        print('\n\n')
     except Exception as exc:
         return build_message(
             message=f"Failure while executing {tool_id}: {exc}",
