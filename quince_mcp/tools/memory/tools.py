@@ -56,10 +56,9 @@ get_all_memory = QuinceTool(
     description=(
         "READ STORED MEMORIES. "
         "Use when the user asks what Quince remembers, asks to see stored memories, "
-        "asks whether a particular fact is remembered, or when you need to identify "
-        "a specific stored memory before deleting it. "
-        "This tool only retrieves memories. It does not add, modify, or delete anything. "
-        "For deleting a specific memory, use this tool first to obtain its ID."
+        "asks whether a particular fact is remembered, or when memory information is needed "
+        "for another operation. "
+        "This tool only retrieves memories. It does not add, modify, or delete anything."
     ),
     handler=basket_client.get_all_memory
 )
@@ -70,9 +69,9 @@ delete_memory = QuinceTool(
     description=(
         "DELETE ONE SPECIFIC STORED MEMORY. "
         "Use only when the user wants one particular fact, preference, or memory removed. "
-        "Always call root--memory--get-all-memory first when the user identifies the target "
-        "by meaning, description, topic, wording, or fuzzy language. "
-        "Use only an ID returned by root--memory--get-all-memory. Never invent or guess an ID. "
+        "The available stored memories are automatically provided through the prerequisite "
+        "service results. Identify the matching memory and use its exact ID. "
+        "Never invent or guess an ID. "
         "Do not use this tool to delete all memories."
     ),
     handler=basket_client.delete_memory,
@@ -81,12 +80,16 @@ delete_memory = QuinceTool(
             "type": "string",
             "description": (
                 "The exact ID of the memory to delete. "
-                "Obtain it from root--memory--get-all-memory and match the user's description "
-                "against the returned memory contents. Never fabricate or guess an ID."
+                "Use the ID from the automatically provided prerequisite memory results "
+                "and match it against the user's description. "
+                "Never fabricate or guess an ID."
             )
         }
     },
-    required_arguments=["memory-id"]
+    required_arguments=["memory-id"],
+    prereq_services=[
+        ("get_all_memory", {}, basket_client.get_all_memory)
+    ]
 )
 
 
@@ -143,7 +146,7 @@ add_command = QuinceTool(
             )
         }
     },
-    required_arguments=["command", "is_temporary"]
+    required_arguments=["command", "is_temporary"],
 )
 
 
@@ -152,9 +155,8 @@ get_all_commands = QuinceTool(
     description=(
         "READ STORED BEHAVIORAL COMMANDS. "
         "Use when the user asks what rules, instructions, or behavioral commands "
-        "Quince has stored, or when you need to identify a specific command before deleting it. "
-        "This tool only retrieves commands. It does not add, modify, or delete anything. "
-        "For deleting a specific command, use this tool first to obtain its ID."
+        "Quince has stored, or when command information is needed for another operation. "
+        "This tool only retrieves commands. It does not add, modify, or delete anything."
     ),
     handler=basket_client.get_all_commands
 )
@@ -165,9 +167,9 @@ delete_command = QuinceTool(
     description=(
         "DELETE ONE SPECIFIC STORED BEHAVIORAL COMMAND. "
         "Use only when the user wants one particular stored rule or instruction removed. "
-        "Always call root--memory--get-all-commands first when the user identifies the target "
-        "by meaning, description, wording, behavior, or fuzzy language. "
-        "Use only an ID returned by root--memory--get-all-commands. Never invent or guess an ID. "
+        "The available stored commands are automatically provided through the prerequisite "
+        "service results. Identify the matching command and use its exact ID. "
+        "Never invent or guess an ID. "
         "Do not use this tool to delete all commands."
     ),
     handler=basket_client.delete_command,
@@ -176,12 +178,16 @@ delete_command = QuinceTool(
             "type": "string",
             "description": (
                 "The exact ID of the command to delete. "
-                "Obtain it from root--memory--get-all-commands and match the user's description "
-                "against the returned command contents. Never fabricate or guess an ID."
+                "Use the ID from the automatically provided prerequisite command results "
+                "and match it against the user's description. "
+                "Never fabricate or guess an ID."
             )
         }
     },
-    required_arguments=["command-id"]
+    required_arguments=["command-id"],
+    prereq_services=[
+        ("get_all_commands", {}, basket_client.get_all_commands)
+    ]
 )
 
 
@@ -209,10 +215,13 @@ memory = QuinceTool(
         "'When I ask for code, include comments'. "
         "Use root--memory--add-memory for facts, preferences, and context. "
         "Use root--memory--add-command for behavioral rules and instructions. "
-        "Use root--memory--get-all-memory to read memories. "
-        "Use root--memory--get-all-commands to read commands. "
-        "When deleting one item, first call the corresponding get-all tool to obtain its real ID, "
-        "then call the corresponding delete tool. Never invent an ID. "
+        "Use root--memory--get-all-memory to read memories when the user explicitly asks "
+        "to view or inspect stored memories. "
+        "Use root--memory--get-all-commands to read commands when the user explicitly asks "
+        "to view or inspect stored behavioral commands. "
+        "For deleting one memory or command, the relevant stored items are automatically "
+        "provided through prerequisite service results. Use the exact ID from those results. "
+        "Never invent an ID. "
         "Use root--memory--delete-all-memory only for deleting all memories. "
         "Use root--memory--delete-all-commands only for deleting all commands."
     ),
