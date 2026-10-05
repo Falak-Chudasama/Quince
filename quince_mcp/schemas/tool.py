@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 
+# TODO: Add argument_grammer for stricter argument.
 class QuinceTool:
     def __init__(
         self,
