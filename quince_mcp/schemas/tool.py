@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
@@ -13,18 +14,18 @@ class QuinceTool:
         kind: Literal["category","leaf"] = "leaf",
         feedback: str = "",
         handler: Callable[..., Any] | Callable[..., Awaitable[Any]] | None = None,
-        arguments: dict[str, dict[str, Any]] = {},
-        required_arguments: list[str] = [],
+        arguments: dict[str, dict[str, Any]] | None = None,
+        required_arguments: list[str] | None = None,
         choice: Literal["none", "auto", "required"] = "required",
         children: list[QuinceTool] | None = None,
-        prereq_services: list[tuple[str, dict[str, dict[str, Any]], Callable[..., Any] | Callable[..., Awaitable[Any]]]] = [],
+        prereq_services: list[tuple[str, dict[str, dict[str, Any]], Callable[..., Any] | Callable[..., Awaitable[Any]]]] | None = None,
     ) -> None:
-        self.name = tool_id.split('.')[-1]
+        self.name = tool_id.split("--")[-1]
         self.tool_id = tool_id
         self.description = description
         self.feedback = feedback
-        self.arguments = arguments
-        self.required_arguments = required_arguments
+        self.arguments = arguments or {}
+        self.required_arguments = required_arguments or []
         self.handler = handler
         self.choice = choice
         self.children = children or []
@@ -50,9 +51,7 @@ class QuinceTool:
         if self.handler is None:
             raise ValueError("Handler is not attached")
 
-        result = self.handler(**arguments)
+        if inspect.iscoroutinefunction(self.handler):
+            return await self.handler(**arguments)
 
-        if inspect.isawaitable(result):
-            return await result
-
-        return result
+        return await asyncio.to_thread(self.handler, **arguments)

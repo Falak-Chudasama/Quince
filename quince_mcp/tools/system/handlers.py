@@ -1,4 +1,8 @@
+import ctypes
 import os
+import shutil
+import subprocess
+from ctypes import wintypes
 from datetime import datetime
 from typing import Any
 
@@ -229,4 +233,241 @@ def _get_running_processes(filter_name: str | None = None):
         "processes": processes,
         "count": len(processes),
         "filter": filter_name
+    }
+
+
+def _open_clipboard():
+    if os.name != "nt":
+        raise RuntimeError("Clipboard tools require Windows")
+
+    user32 = ctypes.windll.user32
+
+    for _ in range(10):
+        if user32.OpenClipboard(None):
+            return user32
+        ctypes.windll.kernel32.Sleep(50)
+
+    raise OSError("Unable to open the Windows clipboard")
+
+
+def _get_clipboard_text():
+    user32 = _open_clipboard()
+    kernel32 = ctypes.windll.kernel32
+
+    try:
+        CF_UNICODETEXT = 13
+        handle = user32.GetClipboardData(CF_UNICODETEXT)
+
+        if not handle:
+            return {
+                "text": "",
+                "has_text": False
+            }
+
+        ptr = kernel32.GlobalLock(handle)
+
+        if not ptr:
+            raise OSError("Unable to lock clipboard data")
+
+        try:
+            text = ctypes.wstring_at(ptr)
+        finally:
+            kernel32.GlobalUnlock(handle)
+
+        return {
+            "text": text,
+            "has_text": bool(text)
+        }
+    finally:
+        user32.CloseClipboard()
+
+
+def _set_clipboard_text(text: str):
+    if os.name != "nt":
+        raise RuntimeError("Clipboard tools require Windows")
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+
+    data = text.encode("utf-16-le") + b"\x00\x00"
+    handle = None
+
+    user32 = _open_clipboard()
+
+    try:
+        handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+
+        if not handle:
+            raise MemoryError("Unable to allocate clipboard memory")
+
+        ptr = kernel32.GlobalLock(handle)
+
+        if not ptr:
+            raise OSError("Unable to lock clipboard memory")
+
+        try:
+            ctypes.memmove(ptr, data, len(data))
+        finally:
+            kernel32.GlobalUnlock(handle)
+
+        if not user32.EmptyClipboard():
+            raise OSError("Unable to clear the existing clipboard")
+
+        if not user32.SetClipboardData(CF_UNICODETEXT, handle):
+            raise OSError("Unable to set clipboard data")
+
+        handle = None
+
+        return {
+            "copied": True,
+            "characters": len(text)
+        }
+    finally:
+        if handle:
+            kernel32.GlobalFree(handle)
+        user32.CloseClipboard()
+
+
+def _clear_clipboard():
+    user32 = _open_clipboard()
+
+    try:
+        if not user32.EmptyClipboard():
+            raise OSError("Unable to clear the clipboard")
+
+        return {
+            "cleared": True
+        }
+    finally:
+        user32.CloseClipboard()
+
+
+def _send_media_key(virtual_key: int, action: str):
+    if os.name != "nt":
+        raise RuntimeError("Media controls require Windows")
+
+    user32 = ctypes.windll.user32
+    KEYEVENTF_KEYUP = 0x0002
+
+    user32.keybd_event(virtual_key, 0, 0, 0)
+    user32.keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0)
+
+    return {
+        "action": action,
+        "sent": True
+    }
+
+
+def _toggle_playback():
+    return _send_media_key(0xB3, "toggle_playback")
+
+
+def _next_track():
+    return _send_media_key(0xB0, "next")
+
+
+def _previous_track():
+    return _send_media_key(0xB1, "previous")
+
+
+def _stop_media():
+    return _send_media_key(0xB2, "stop")
+
+
+def _volume_up():
+    return _send_media_key(0xAF, "volume_up")
+
+
+def _volume_down():
+    return _send_media_key(0xAE, "volume_down")
+
+
+def _toggle_mute():
+    return _send_media_key(0xAD, "toggle_mute")
+
+
+def _send_notification(title: str, message: str):
+    if os.name != "nt":
+        raise RuntimeError("Notifications require Windows")
+
+    powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+
+    if not powershell:
+        raise RuntimeError("Windows PowerShell was not found")
+
+    safe_title = title.replace("'", "''").replace("\r", " ").replace("\n", " ")
+    safe_message = message.replace("'", "''").replace("\r", " ").replace("\n", " ")
+
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "Add-Type -AssemblyName System.Drawing; "
+        "$n = New-Object System.Windows.Forms.NotifyIcon; "
+        "$n.Icon = [System.Drawing.SystemIcons]::Information; "
+        "$n.Visible = $true; "
+        f"$n.BalloonTipTitle = '{safe_title}'; "
+        f"$n.BalloonTipText = '{safe_message}'; "
+        "$n.ShowBalloonTip(5000); "
+        "Start-Sleep -Milliseconds 5500; "
+        "$n.Visible = $false; "
+        "$n.Dispose()"
+    )
+
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    subprocess.Popen(
+        [
+            powershell,
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            script
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags
+    )
+
+    return {
+        "sent": True,
+        "title": title,
+        "message": message
+    }
+
+
+def _restart_system():
+    if os.name != "nt":
+        raise RuntimeError("System restart requires Windows")
+
+    subprocess.Popen(
+        ["shutdown", "/r", "/t", "0", "/f"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+
+    return {
+        "action": "restart_system",
+        "initiated": True
+    }
+
+
+def _shut_down_system():
+    if os.name != "nt":
+        raise RuntimeError("System shutdown requires Windows")
+
+    subprocess.Popen(
+        ["shutdown", "/s", "/t", "0", "/f"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+
+    return {
+        "action": "shut_down_system",
+        "initiated": True
     }

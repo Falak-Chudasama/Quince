@@ -1,16 +1,17 @@
-from typing import Any
+import asyncio
 import inspect
+from typing import Any
 
 async def execute(handler, arguments: dict[str, Any] | None = None) -> Any:
     if handler is None:
         raise ValueError("Handler is not provided")
 
     if arguments is not None:
-        result = handler(**arguments)
-    else:
-        result = handler()
+        if inspect.iscoroutinefunction(handler):
+            return await handler(**arguments)
+        return await asyncio.to_thread(handler, **arguments)
 
-    if inspect.isawaitable(result):
-        return await result
+    if inspect.iscoroutinefunction(handler):
+        return await handler()
 
-    return result
+    return await asyncio.to_thread(handler)

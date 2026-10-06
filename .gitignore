@@ -4,3 +4,4 @@ __pycache__/
 .env
 qwen3-tts/
 .vscode/
+quince_notes/
