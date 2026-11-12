@@ -1,0 +1,725 @@
+{
+  "tool_tree": {
+    "root": {
+      "tool_id": "root",
+      "kind": "category",
+      "description": "Top-level menu. Pick the category that matches the user's requested capability. system = direct Windows computer control and hardware telemetry; productivity = local Quince notes and countdown timers; use productivity notes for prompts such as 'save this', 'write this down', 'make a note', 'read my notes', or 'edit my note'; knowledge = Wikipedia and Wikimedia knowledge retrieval; memory = stored memories and behavioral commands. If the request is general conversation, something you can answer directly, or doesn't need live data from this device or these services, pick chat \u2014 never guess a category.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--chat",
+        "root--system",
+        "root--productivity",
+        "root--knowledge",
+        "root--memory"
+      ]
+    },
+    "terminate": {
+      "tool_id": "terminate",
+      "kind": "leaf",
+      "description": "If everything in the prompt has been executed, choose this option",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "reset": {
+      "tool_id": "reset",
+      "kind": "leaf",
+      "description": "If the tool you are looking for or its category or subcategory does not exist here, choose this option",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--chat": {
+      "tool_id": "root--chat",
+      "kind": "leaf",
+      "description": "If user does not need any other tasks to be done, and just needs a simple response from you, or you find user's query too vague and confused, choose this rather safer option",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system": {
+      "tool_id": "root--system",
+      "kind": "category",
+      "description": "USE FOR DIRECT INTERACTION WITH THIS WINDOWS COMPUTER. Includes hardware telemetry such as CPU, RAM, GPU, VRAM, battery, disk, time, and running processes, plus clipboard control, media playback/audio control, desktop notifications, and explicit system restart or shutdown. Do not use for files, notes, web knowledge, Wikipedia, general internet information, or application-specific APIs. For restart and shutdown, require an explicit current user request to restart/reboot or shut down/power off the computer.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--system--clipboard",
+        "root--system--media",
+        "root--system--notifications",
+        "root--system--restart-system",
+        "root--system--shut-down-system",
+        "root--system--get-ram-usage",
+        "root--system--get-gpu-stats",
+        "root--system--get-battery-level",
+        "root--system--get-cpu-usage",
+        "root--system--get-cpu-temp",
+        "root--system--get-disk-usage",
+        "root--system--get-datetime",
+        "root--system--get-running-processes"
+      ]
+    },
+    "root--system--clipboard": {
+      "tool_id": "root--system--clipboard",
+      "kind": "category",
+      "description": "WINDOWS CLIPBOARD CONTROL. Use for reading the current clipboard text, copying text to the clipboard, or clearing the clipboard. Do not use for clipboard history or unrelated computer data.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--system--clipboard--get-clipboard",
+        "root--system--clipboard--set-clipboard",
+        "root--system--clipboard--clear-clipboard"
+      ]
+    },
+    "root--system--clipboard--get-clipboard": {
+      "tool_id": "root--system--clipboard--get-clipboard",
+      "kind": "leaf",
+      "description": "READ THE CURRENT WINDOWS TEXT CLIPBOARD. Use only when the user asks what is currently copied, what is on the clipboard, or asks Quince to read the clipboard contents. Do not use for clipboard history, files, or application content.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--clipboard--set-clipboard": {
+      "tool_id": "root--system--clipboard--set-clipboard",
+      "kind": "leaf",
+      "description": "WRITE TEXT TO THE CURRENT WINDOWS CLIPBOARD. Use when the user explicitly asks to copy text, put text on the clipboard, or replace the clipboard contents with specified text. Only place the exact text that the user wants copied into the text argument.",
+      "arguments": {
+        "text": {
+          "type": "string",
+          "description": "The exact text that should be placed on the Windows clipboard. Do not include quotation marks, explanations, or conversational framing."
+        }
+      },
+      "required_arguments": [
+        "text"
+      ],
+      "child_ids": []
+    },
+    "root--system--clipboard--clear-clipboard": {
+      "tool_id": "root--system--clipboard--clear-clipboard",
+      "kind": "leaf",
+      "description": "CLEAR THE CURRENT WINDOWS CLIPBOARD. Use only when the user explicitly asks to clear, empty, or erase the clipboard. Do not use for deleting files, notes, memories, or browser history.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media": {
+      "tool_id": "root--system--media",
+      "kind": "category",
+      "description": "WINDOWS MEDIA AND AUDIO CONTROL. Use for explicit playback commands such as play/pause/resume, next track, previous track, stop media, increase or decrease system volume, or mute/unmute system audio. Do not use for opening media applications, searching media, or controlling unrelated application functions.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--system--media--toggle-playback",
+        "root--system--media--next-track",
+        "root--system--media--previous-track",
+        "root--system--media--stop",
+        "root--system--media--volume-up",
+        "root--system--media--volume-down",
+        "root--system--media--toggle-mute"
+      ]
+    },
+    "root--system--media--toggle-playback": {
+      "tool_id": "root--system--media--toggle-playback",
+      "kind": "leaf",
+      "description": "TOGGLE THE CURRENT SYSTEM MEDIA PLAYBACK BETWEEN PLAYING AND PAUSED. Use when the user explicitly asks to play, pause, resume, or toggle the music/video/media currently controlled by Windows. Use this only for playback control, not for opening an application or searching for media.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media--next-track": {
+      "tool_id": "root--system--media--next-track",
+      "kind": "leaf",
+      "description": "SKIP TO THE NEXT TRACK OR MEDIA ITEM USING THE WINDOWS MEDIA CONTROL. Use only when the user asks to play the next song, next track, next media item, or skip forward to the next item.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media--previous-track": {
+      "tool_id": "root--system--media--previous-track",
+      "kind": "leaf",
+      "description": "SKIP TO THE PREVIOUS TRACK OR MEDIA ITEM USING THE WINDOWS MEDIA CONTROL. Use only when the user asks for the previous song, previous track, previous media item, or go back to the prior item.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media--stop": {
+      "tool_id": "root--system--media--stop",
+      "kind": "leaf",
+      "description": "SEND THE WINDOWS MEDIA STOP COMMAND. Use only when the user explicitly asks to stop the currently playing media. Do not use for closing an application or stopping a Windows process.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media--volume-up": {
+      "tool_id": "root--system--media--volume-up",
+      "kind": "leaf",
+      "description": "INCREASE SYSTEM MEDIA VOLUME USING THE WINDOWS VOLUME CONTROL. Use only when the user explicitly asks to increase, raise, or turn up the system volume.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media--volume-down": {
+      "tool_id": "root--system--media--volume-down",
+      "kind": "leaf",
+      "description": "DECREASE SYSTEM MEDIA VOLUME USING THE WINDOWS VOLUME CONTROL. Use only when the user explicitly asks to decrease, lower, or turn down the system volume.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--media--toggle-mute": {
+      "tool_id": "root--system--media--toggle-mute",
+      "kind": "leaf",
+      "description": "TOGGLE SYSTEM AUDIO MUTE USING THE WINDOWS VOLUME CONTROL. Use only when the user explicitly asks to mute, unmute, or toggle system audio mute.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--notifications": {
+      "tool_id": "root--system--notifications",
+      "kind": "category",
+      "description": "WINDOWS DESKTOP NOTIFICATION CONTROL. Use only for immediate on-screen notifications explicitly requested by the user. Do not use for timers, reminders, messages, email, or alerts that should occur later.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--system--notifications--send-notification"
+      ]
+    },
+    "root--system--notifications--send-notification": {
+      "tool_id": "root--system--notifications--send-notification",
+      "kind": "leaf",
+      "description": "SHOW A WINDOWS DESKTOP NOTIFICATION TO THE USER IMMEDIATELY. Use only when the user explicitly asks Quince to show, send, display, or pop up a notification. Do not use this tool as a substitute for a timer, reminder, email, or chat message. This tool sends the notification now; it does not schedule one for later.",
+      "arguments": {
+        "title": {
+          "type": "string",
+          "description": "Short notification title. Use only the title text, without quotation marks or extra framing."
+        },
+        "message": {
+          "type": "string",
+          "description": "Exact notification body to display. Do not add conversational framing."
+        }
+      },
+      "required_arguments": [
+        "title",
+        "message"
+      ],
+      "child_ids": []
+    },
+    "root--system--restart-system": {
+      "tool_id": "root--system--restart-system",
+      "kind": "leaf",
+      "description": "IMMEDIATELY RESTART THIS WINDOWS COMPUTER. CALL THIS TOOL ONLY WHEN THE USER'S CURRENT REQUEST EXPLICITLY TELLS QUINCE TO RESTART OR REBOOT THE SYSTEM, PC, COMPUTER, OR WINDOWS. Do not call for restarting an application, service, process, session, or server. Do not call from vague requests such as 'start fresh', 'reset everything', 'fix the PC', or 'refresh'. The user must explicitly request a system or computer restart/reboot.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--shut-down-system": {
+      "tool_id": "root--system--shut-down-system",
+      "kind": "leaf",
+      "description": "IMMEDIATELY SHUT DOWN THIS WINDOWS COMPUTER. CALL THIS TOOL ONLY WHEN THE USER'S CURRENT REQUEST EXPLICITLY TELLS QUINCE TO SHUT DOWN, POWER OFF, OR TURN OFF THE SYSTEM, PC, COMPUTER, OR WINDOWS. Do not call for closing an application, stopping a process, logging out, sleeping, locking, or suspending the computer. Do not call from vague requests such as 'turn everything off' unless the user clearly refers to the computer/system. The user must explicitly request a system or computer shutdown/power-off.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-cpu-usage": {
+      "tool_id": "root--system--get-cpu-usage",
+      "kind": "leaf",
+      "description": "Returns current CPU usage/utilization as a percentage and CPU core count. Use for CPU usage, processor usage, CPU load, or how busy the CPU is. Do not use for CPU temperature, RAM, GPU, or VRAM.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-cpu-temp": {
+      "tool_id": "root--system--get-cpu-temp",
+      "kind": "leaf",
+      "description": "Returns the current CPU temperature in Celsius. Use only when the user asks about CPU temperature, processor temperature, CPU thermals, or how hot the CPU is. Do not use for CPU usage.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-ram-usage": {
+      "tool_id": "root--system--get-ram-usage",
+      "kind": "leaf",
+      "description": "Returns current SYSTEM RAM usage including used, available, total, and usage percentage. Use for RAM, system memory, main memory, available memory, or how much memory the computer has. Do not use for VRAM or GPU memory.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-gpu-stats": {
+      "tool_id": "root--system--get-gpu-stats",
+      "kind": "leaf",
+      "description": "Returns GPU utilization, GPU temperature, VRAM usage, VRAM capacity, and GPU memory utilization. Use for GPU usage, GPU temperature, VRAM, graphics memory, or GPU memory questions. Use 'all' for generic GPU questions and use the exact GPU name only when the user explicitly identifies a GPU.",
+      "arguments": {
+        "gpu_name": {
+          "type": "string",
+          "description": "Which GPU to query. Use 'all' for generic GPU questions such as GPU usage, GPU temperature, or VRAM usage. Use the exact GPU name only when the user explicitly identifies a GPU or requests the dedicated/main GPU.",
+          "enum": [
+            "NVIDIA GeForce RTX 3050 Laptop GPU",
+            "all"
+          ]
+        }
+      },
+      "required_arguments": [
+        "gpu_name"
+      ],
+      "child_ids": []
+    },
+    "root--system--get-battery-level": {
+      "tool_id": "root--system--get-battery-level",
+      "kind": "leaf",
+      "description": "Returns current battery percentage, charging or plugged-in state, and estimated remaining battery time when available. Use only for battery level, battery status, charging, plugged-in, or remaining battery questions.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-disk-usage": {
+      "tool_id": "root--system--get-disk-usage",
+      "kind": "leaf",
+      "description": "Returns disk usage for a drive including total, used, free, and usage percentage. Use when the user asks about storage space, disk space, free space, used space, or how much space remains on a drive.",
+      "arguments": {
+        "drive": {
+          "type": "string",
+          "description": "Drive or filesystem path to inspect, such as 'C:\\\\' or 'D:\\\\'. If the user does not specify a drive, use the system drive."
+        }
+      },
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-datetime": {
+      "tool_id": "root--system--get-datetime",
+      "kind": "leaf",
+      "description": "Returns the current local date, time, timezone, UTC offset, and ISO timestamp of this computer. Use when the user asks for the current date, current time, local time, timezone, or today's date.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--system--get-running-processes": {
+      "tool_id": "root--system--get-running-processes",
+      "kind": "leaf",
+      "description": "Returns currently running processes on this computer including process ID, name, and status. Use when the user asks what programs or processes are running, whether a process is running, or asks to find a specific running process.",
+      "arguments": {
+        "filter_name": {
+          "type": "string",
+          "description": "Optional case-insensitive process name filter. Use it when the user asks about a specific process or application; otherwise omit it."
+        }
+      },
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--productivity": {
+      "tool_id": "root--productivity",
+      "kind": "category",
+      "description": "LOCAL PERSONAL PRODUCTIVITY TOOLS. Includes Markdown note management and countdown timers. Use notes for explicit note-taking requests. Use timers for explicit countdown requests.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--productivity--notes",
+        "root--productivity--timers"
+      ]
+    },
+    "root--productivity--notes": {
+      "tool_id": "root--productivity--notes",
+      "kind": "category",
+      "description": "LOCAL NOTE MANAGEMENT. Use for explicit requests to save, read, list, edit, or delete notes. Notes are different from long-term memory and behavioral commands.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--productivity--notes--write-note",
+        "root--productivity--notes--read-note",
+        "root--productivity--notes--list-notes",
+        "root--productivity--notes--edit-note",
+        "root--productivity--notes--delete-note"
+      ]
+    },
+    "root--productivity--notes--write-note": {
+      "tool_id": "root--productivity--notes--write-note",
+      "kind": "leaf",
+      "description": "CREATE A NEW LOCAL MARKDOWN NOTE. Use when the user explicitly asks you to save, record, remember-for-later, write down, or make a note of information. CRITICAL: note_name is ONLY the filename/title. content is the ACTUAL NOTE BODY. The content must preserve the substantive information from the user's request. NEVER put only the generated title into content. Example: if the user says 'Make a note that my database exam is on Friday at 10 AM', a valid call is note_name='Database Exam', content='Database exam is on Friday at 10 AM.' If the user supplies multiple sentences, paragraphs, bullets, code, or a block of text, preserve all of it in content. Do not summarize, compress, paraphrase, or omit substantive information unless the user explicitly asks for a summary. For an ordinary note-taking request, overwrite must be false. Only set overwrite=true when the user explicitly asks to replace the entire existing note.",
+      "arguments": {
+        "note_name": {
+          "type": "string",
+          "description": "TITLE/FILENAME ONLY. A concise descriptive title for the note. This is NOT the note content."
+        },
+        "content": {
+          "type": "string",
+          "description": "THE COMPLETE NOTE BODY. Write the actual information the user asked Quince to save. Preserve all substantive details from the user's request. Never use only the note title here. Never summarize unless the user explicitly requested summarization."
+        },
+        "overwrite": {
+          "type": "boolean",
+          "description": "Set true only when the user explicitly asks to completely replace an existing note. Otherwise use false."
+        }
+      },
+      "required_arguments": [
+        "note_name",
+        "content"
+      ],
+      "child_ids": []
+    },
+    "root--productivity--notes--read-note": {
+      "tool_id": "root--productivity--notes--read-note",
+      "kind": "leaf",
+      "description": "READ ONE EXISTING LOCAL MARKDOWN NOTE. Use when the user asks to read, open, show, retrieve, inspect, or quote a saved note. The note name may be approximate.",
+      "arguments": {
+        "note_name": {
+          "type": "string",
+          "description": "The note name described by the user. Pass the user's wording without inventing a different filename."
+        }
+      },
+      "required_arguments": [
+        "note_name"
+      ],
+      "child_ids": []
+    },
+    "root--productivity--notes--list-notes": {
+      "tool_id": "root--productivity--notes--list-notes",
+      "kind": "leaf",
+      "description": "LIST ALL SAVED LOCAL MARKDOWN NOTES. Use when the user asks what notes exist or needs to identify a note.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--productivity--notes--edit-note": {
+      "tool_id": "root--productivity--notes--edit-note",
+      "kind": "leaf",
+      "description": "EDIT ONE EXISTING LOCAL MARKDOWN NOTE. Use when the user explicitly asks to modify, update, append, prepend, or replace content in an existing note. For replace, content must be the COMPLETE NEW NOTE BODY. For append, content is the exact text to add at the end. For prepend, content is the exact text to add at the beginning. For replace_text, provide the exact old and new text.",
+      "arguments": {
+        "note_name": {
+          "type": "string",
+          "description": "The existing note name. Approximate names are allowed."
+        },
+        "content": {
+          "type": "string",
+          "description": "For replace: the complete new note body. For append/prepend: the exact Markdown text to add."
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "append",
+            "prepend",
+            "replace_text"
+          ],
+          "description": "replace = full rewrite; append = add to end; prepend = add to beginning; replace_text = exact substitution."
+        },
+        "old_text": {
+          "type": "string",
+          "description": "For replace_text only: exact existing text to replace."
+        },
+        "new_text": {
+          "type": "string",
+          "description": "For replace_text only: exact replacement text."
+        }
+      },
+      "required_arguments": [
+        "note_name",
+        "operation"
+      ],
+      "child_ids": []
+    },
+    "root--productivity--notes--delete-note": {
+      "tool_id": "root--productivity--notes--delete-note",
+      "kind": "leaf",
+      "description": "DELETE ONE EXISTING LOCAL MARKDOWN NOTE. Use only when the user explicitly asks to delete, remove, erase, or discard a specific note.",
+      "arguments": {
+        "note_name": {
+          "type": "string",
+          "description": "The note name described by the user. It may be approximate."
+        }
+      },
+      "required_arguments": [
+        "note_name"
+      ],
+      "child_ids": []
+    },
+    "root--productivity--timers": {
+      "tool_id": "root--productivity--timers",
+      "kind": "category",
+      "description": "LOCAL COUNTDOWN TIMER MANAGEMENT. Use for explicit duration-based timer requests.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--productivity--timers--set-timer",
+        "root--productivity--timers--list-timers",
+        "root--productivity--timers--cancel-timer"
+      ]
+    },
+    "root--productivity--timers--set-timer": {
+      "tool_id": "root--productivity--timers--set-timer",
+      "kind": "leaf",
+      "description": "START ONE LOCAL COUNTDOWN TIMER. Use for explicit duration-based timer requests such as 'set a 10 minute timer'.",
+      "arguments": {
+        "duration_seconds": {
+          "type": "integer",
+          "description": "Exact timer duration in seconds. 30 seconds = 30, 5 minutes = 300, 1 hour = 3600.",
+          "minimum": 1,
+          "maximum": 604800
+        },
+        "label": {
+          "type": "string",
+          "description": "Short description of what the timer is for. Use 'Timer' if no label is provided."
+        }
+      },
+      "required_arguments": [
+        "duration_seconds"
+      ],
+      "child_ids": []
+    },
+    "root--productivity--timers--list-timers": {
+      "tool_id": "root--productivity--timers--list-timers",
+      "kind": "leaf",
+      "description": "LIST CURRENTLY ACTIVE COUNTDOWN TIMERS. Use when the user asks what timers are currently running.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--productivity--timers--cancel-timer": {
+      "tool_id": "root--productivity--timers--cancel-timer",
+      "kind": "leaf",
+      "description": "CANCEL ONE ACTIVE COUNTDOWN TIMER. Use only when the user explicitly asks to stop or cancel a timer. Use the exact timer ID returned by a previous timer result.",
+      "arguments": {
+        "timer_id": {
+          "type": "string",
+          "description": "Exact timer ID returned by set_timer or list_timers. Never invent one."
+        }
+      },
+      "required_arguments": [
+        "timer_id"
+      ],
+      "child_ids": []
+    },
+    "root--knowledge": {
+      "tool_id": "root--knowledge",
+      "kind": "category",
+      "description": "EXTERNAL KNOWLEDGE RETRIEVAL THROUGH WIKIPEDIA. Use this category for Wikipedia-based factual information. Do not use for personal memory, notes, timers, local computer control, or general internet browsing.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--knowledge--wikipedia"
+      ]
+    },
+    "root--knowledge--wikipedia": {
+      "tool_id": "root--knowledge--wikipedia",
+      "kind": "category",
+      "description": "ENGLISH WIKIPEDIA TOOLS. Use search when the intended article is unknown, summary for normal factual lookups, and page when detailed article content is required.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--knowledge--wikipedia--search",
+        "root--knowledge--wikipedia--summary",
+        "root--knowledge--wikipedia--page"
+      ]
+    },
+    "root--knowledge--wikipedia--search": {
+      "tool_id": "root--knowledge--wikipedia--search",
+      "kind": "leaf",
+      "description": "SEARCH ENGLISH WIKIPEDIA FOR AN ARTICLE. Use when the user asks about a topic and the intended Wikipedia article is unknown or ambiguous. Do not use when the exact article is already known.",
+      "arguments": {
+        "query": {
+          "type": "string",
+          "description": "A concise Wikipedia search query derived from the user's request."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of search results. Use 5 by default.",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "required_arguments": [
+        "query"
+      ],
+      "child_ids": []
+    },
+    "root--knowledge--wikipedia--summary": {
+      "tool_id": "root--knowledge--wikipedia--summary",
+      "kind": "leaf",
+      "description": "GET THE LEAD SUMMARY OF ONE ENGLISH WIKIPEDIA ARTICLE. Use for normal factual questions, short explanations, or concise overviews when the intended article is known. Prefer this over page for ordinary questions.",
+      "arguments": {
+        "title": {
+          "type": "string",
+          "description": "The intended English Wikipedia article title. Use an exact title when known from context or search results."
+        }
+      },
+      "required_arguments": [
+        "title"
+      ],
+      "child_ids": []
+    },
+    "root--knowledge--wikipedia--page": {
+      "tool_id": "root--knowledge--wikipedia--page",
+      "kind": "leaf",
+      "description": "GET DETAILED CONTENT FROM ONE ENGLISH WIKIPEDIA ARTICLE. Use when the user asks for detailed information, substantial context, or more information than the article summary provides. Do not use for ordinary factual questions when summary is sufficient.",
+      "arguments": {
+        "title": {
+          "type": "string",
+          "description": "The intended English Wikipedia article title."
+        },
+        "max_chars": {
+          "type": "integer",
+          "description": "Maximum amount of article text to return. Use 12000 by default.",
+          "minimum": 1000,
+          "maximum": 30000
+        }
+      },
+      "required_arguments": [
+        "title"
+      ],
+      "child_ids": []
+    },
+    "root--memory": {
+      "tool_id": "root--memory",
+      "kind": "category",
+      "description": "MANAGE STORED MEMORIES AND BEHAVIORAL COMMANDS. MEMORY = something that is TRUE, KNOWN, PREFERRED, or PERSONAL CONTEXT. Examples: 'I prefer dark mode', 'My project uses MongoDB', 'I am a B.Tech IT student'. COMMAND = something Quince must DO, FOLLOW, AVOID, or HOW IT MUST BEHAVE. Examples: 'Always greet me warmly', 'Never use emojis', 'When I ask for code, include comments'. Use root--memory--add-memory for facts, preferences, and context. Use root--memory--add-command for behavioral rules and instructions. Use root--memory--get-all-memory to read memories when the user explicitly asks to view or inspect stored memories. Use root--memory--get-all-commands to read commands when the user explicitly asks to view or inspect stored behavioral commands. For deleting one memory or command, the relevant stored items are automatically provided through prerequisite service results. Use the exact ID from those results. Never invent an ID. Use root--memory--delete-all-memory only for deleting all memories. Use root--memory--delete-all-commands only for deleting all commands.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": [
+        "root--memory--add-memory",
+        "root--memory--get-all-memory",
+        "root--memory--delete-memory",
+        "root--memory--delete-all-memory",
+        "root--memory--add-command",
+        "root--memory--get-all-commands",
+        "root--memory--delete-command",
+        "root--memory--delete-all-commands"
+      ]
+    },
+    "root--memory--add-memory": {
+      "tool_id": "root--memory--add-memory",
+      "kind": "leaf",
+      "description": "STORE A FACT, PREFERENCE, OR PIECE OF INFORMATION. Use ONLY when the user explicitly asks Quince to remember, save, retain, or store information about the user, their preferences, projects, circumstances, or another factual piece of context. DO NOT use this tool for behavioral rules or instructions telling Quince HOW TO RESPOND or WHAT TO DO. Behavioral rules belong to root--memory--add-command. Examples: 'Remember that I prefer dark mode.' 'Remember that my project uses MongoDB.' 'Remember that I am a B.Tech IT student.' Not for this tool: 'Always greet me warmly.' 'Never use emojis.' 'Whenever I ask X, do Y.' Those are commands, not memories.",
+      "arguments": {
+        "memory": {
+          "type": "string",
+          "description": "ONLY the information that should be remembered. Generate a concise standalone statement containing the actual fact, preference, context, or information. Remove phrases such as 'remember this', 'save this', 'keep this permanently', 'for future sessions', and other retention instructions. Do not include conversational framing. Example: user says 'Remember that I prefer dark mode permanently.' Store: 'The user prefers dark mode.'"
+        },
+        "is_temporary": {
+          "type": "boolean",
+          "description": "Controls retention only. Set true for temporary or session-only storage. Set false for persistent, permanent, long-term, or cross-session storage. Do not describe retention inside the memory text."
+        }
+      },
+      "required_arguments": [
+        "memory",
+        "is_temporary"
+      ],
+      "child_ids": []
+    },
+    "root--memory--get-all-memory": {
+      "tool_id": "root--memory--get-all-memory",
+      "kind": "leaf",
+      "description": "READ STORED MEMORIES. Use when the user asks what Quince remembers, asks to see stored memories, asks whether a particular fact is remembered, or when memory information is needed for another operation. This tool only retrieves memories. It does not add, modify, or delete anything.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--memory--delete-memory": {
+      "tool_id": "root--memory--delete-memory",
+      "kind": "leaf",
+      "description": "DELETE ONE SPECIFIC STORED MEMORY. Use only when the user wants one particular fact, preference, or memory removed. The available stored memories are automatically provided through the prerequisite service results. Identify the matching memory and use its exact ID. Never invent or guess an ID. Do not use this tool to delete all memories.",
+      "arguments": {
+        "memory-id": {
+          "type": "string",
+          "description": "The exact ID of the memory to delete. Use the ID from the automatically provided prerequisite memory results and match it against the user's description. Never fabricate or guess an ID."
+        }
+      },
+      "required_arguments": [
+        "memory-id"
+      ],
+      "child_ids": []
+    },
+    "root--memory--delete-all-memory": {
+      "tool_id": "root--memory--delete-all-memory",
+      "kind": "leaf",
+      "description": "DELETE ALL STORED MEMORIES. Use ONLY when the user explicitly asks to erase, forget, clear, or delete ALL stored memories. Do not use this tool for deleting one memory or a specific subset.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--memory--add-command": {
+      "tool_id": "root--memory--add-command",
+      "kind": "leaf",
+      "description": "STORE A BEHAVIORAL RULE OR INSTRUCTION FOR QUINCE. Use ONLY when the user explicitly asks Quince to remember, save, retain, or follow a rule describing HOW QUINCE SHOULD BEHAVE, RESPOND, or ACT. Examples: 'Always greet me warmly.' 'Never use emojis.' 'When I ask for code, include comments.' 'Whenever I say X, do Y.' DO NOT use this tool for ordinary facts, preferences, or personal information. Those belong to root--memory--add-memory. If the stored text tells Quince WHAT TO DO or HOW TO BEHAVE, it is a COMMAND. If it tells Quince SOMETHING THAT IS TRUE or PREFERRED, it is a MEMORY.",
+      "arguments": {
+        "command": {
+          "type": "string",
+          "description": "ONLY the reusable behavioral instruction Quince should follow. Generate a concise standalone rule. Do not include 'remember this', 'save this', 'keep this permanently', 'for future sessions', or any other retention wording. Retention belongs only in is_temporary. Example: user says 'Whenever I ask you to greet me, greet me warmly and naturally, and remember this permanently.' Store: 'Whenever the user asks to be greeted, greet them warmly and naturally.'"
+        },
+        "is_temporary": {
+          "type": "boolean",
+          "description": "Controls retention only. Set true for temporary or session-only storage. Set false for persistent, permanent, long-term, or cross-session storage. If the user says permanently, forever, long-term, or across future sessions, set this to false."
+        }
+      },
+      "required_arguments": [
+        "command",
+        "is_temporary"
+      ],
+      "child_ids": []
+    },
+    "root--memory--get-all-commands": {
+      "tool_id": "root--memory--get-all-commands",
+      "kind": "leaf",
+      "description": "READ STORED BEHAVIORAL COMMANDS. Use when the user asks what rules, instructions, or behavioral commands Quince has stored, or when command information is needed for another operation. This tool only retrieves commands. It does not add, modify, or delete anything.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    },
+    "root--memory--delete-command": {
+      "tool_id": "root--memory--delete-command",
+      "kind": "leaf",
+      "description": "DELETE ONE SPECIFIC STORED BEHAVIORAL COMMAND. Use only when the user wants one particular stored rule or instruction removed. The available stored commands are automatically provided through the prerequisite service results. Identify the matching command and use its exact ID. Never invent or guess an ID. Do not use this tool to delete all commands.",
+      "arguments": {
+        "command-id": {
+          "type": "string",
+          "description": "The exact ID of the command to delete. Use the ID from the automatically provided prerequisite command results and match it against the user's description. Never fabricate or guess an ID."
+        }
+      },
+      "required_arguments": [
+        "command-id"
+      ],
+      "child_ids": []
+    },
+    "root--memory--delete-all-commands": {
+      "tool_id": "root--memory--delete-all-commands",
+      "kind": "leaf",
+      "description": "DELETE ALL STORED BEHAVIORAL COMMANDS. Use ONLY when the user explicitly asks to erase, forget, clear, or delete ALL stored commands, rules, or behavioral instructions. Do not use this tool for deleting one command or a specific subset.",
+      "arguments": {},
+      "required_arguments": [],
+      "child_ids": []
+    }
+  },
+  "golden_messages": [
+    {
+      "message": "Category contents",
+      "result": null,
+      "children": [
+        {
+          "tool_id": "root--system",
+          "description": "x"
+        }
+      ],
+      "was_category_call": true,
+      "terminate": false,
+      "success": true,
+      "error": null
+    },
+    {
+      "message": "test",
+      "result": {
+        "key": "value"
+      },
+      "children": [],
+      "was_category_call": false,
+      "terminate": false,
+      "success": true,
+      "error": null
+    },
+    {
+      "message": "Failure",
+      "result": null,
+      "children": [],
+      "was_category_call": true,
+      "terminate": true,
+      "success": false,
+      "error": "unknown_tool"
+    }
+  ]
+}

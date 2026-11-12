@@ -45,7 +45,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class BasketSettings:
-    ws_url: str = field(default_factory=lambda: _env_str("BASKET_WS_URL", "ws://127.0.0.1:7000/ws"))
+    ws_url: str = field(default_factory=lambda: _env_str("BASKET_WS_URL", "ws://127.0.0.1:10010/ws"))
     ping_interval: int = field(default_factory=lambda: _env_int("WS_PING_INTERVAL", 20))
     ping_timeout: int = field(default_factory=lambda: _env_int("WS_PING_TIMEOUT", 20))
     max_size: int | None = field(default_factory=lambda: _env_int("WS_MAX_SIZE", None))

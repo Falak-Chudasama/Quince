@@ -19,6 +19,7 @@ class QuinceTool:
         choice: Literal["none", "auto", "required"] = "required",
         children: list[QuinceTool] | None = None,
         prereq_services: list[tuple[str, dict[str, dict[str, Any]], Callable[..., Any] | Callable[..., Awaitable[Any]]]] | None = None,
+        hidden: bool = False,
     ) -> None:
         self.name = tool_id.split("--")[-1]
         self.tool_id = tool_id
@@ -31,6 +32,7 @@ class QuinceTool:
         self.children = children or []
         self.kind = kind
         self.prereq_services = prereq_services or []
+        self.hidden = hidden
 
     def add_child(self, child: QuinceTool) -> None:
         self.children.append(child)

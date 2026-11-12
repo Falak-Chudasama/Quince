@@ -1,0 +1,16 @@
+{
+  "name": "quince-browser-bridge",
+  "version": "0.1.0",
+  "description": "Lets your local Quince assistant observe and operate this browser",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "@types/chrome": "^0.0.300",
+    "typescript": "^5.7.0"
+  }
+}

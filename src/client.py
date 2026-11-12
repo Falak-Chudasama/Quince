@@ -15,7 +15,12 @@ from src.input.hotkey import PushToTalkHotkey
 from src.logging_setup import get_logger
 from src.transport.connection import BasketConnection
 from src.transport.event_handler import BasketEventHandler
-from src.transport.protocol import build_cancel_message, build_start_message, build_stop_message
+from src.transport.protocol import (
+    build_cancel_message,
+    build_start_message,
+    build_stop_message,
+    build_text_message,
+)
 from src.ui.status import StatusLine, print_banner
 from src.ui.theme import console
 
@@ -76,13 +81,22 @@ class QuinceClient:
 
         self._llm_text_parts: list[str] = []
 
+        # Callbacks for GUI or external observers
+        self.on_user_message_cb: Any = None
+        self.on_llm_token_cb: Any = None
+        self.on_llm_final_cb: Any = None
+        self.on_status_change_cb: Any = None
+
         self.event_handler = BasketEventHandler(
             self.player,
             on_turn_finished=self._on_turn_finished,
             on_cancelled=self._on_cancelled,
-            on_llm_token=self._llm_text_parts.append,
+            on_llm_token=self._on_llm_token,
             on_llm_final=self._on_llm_final,
+            on_stt_final=self._on_stt_final,
         )
+
+        self.status.add_listener(lambda snap: self._notify_status(snap.turn, snap.connection))
 
         self.hotkey = PushToTalkHotkey(
             record_key=self._settings.input.push_to_talk_hotkey.split("+")[-1].strip(),
@@ -221,13 +235,88 @@ class QuinceClient:
         self._pending_cancel_token = None
         self._on_turn_finished()
 
+    def _on_llm_token(self, token: str) -> None:
+        self._llm_text_parts.append(token)
+        if self.on_llm_token_cb is not None:
+            self.on_llm_token_cb(token)
+
+    def _on_stt_final(self, text: str) -> None:
+        if self.on_user_message_cb is not None:
+            self.on_user_message_cb(text, "voice")
+
+    def _notify_status(self, turn: str, connection: str) -> None:
+        if self.on_status_change_cb is not None:
+            self.on_status_change_cb(turn, connection)
+
     def _on_llm_final(self, text: str) -> None:
         # The spoken output is the actual TTS audio arriving as binary
         # frames; this is printed purely for visibility/debugging.
         # Escaped because `text` is arbitrary LLM output and may itself
         # contain bracket sequences that would otherwise be parsed as
         # (and potentially break on) Rich markup.
+        if self.on_llm_final_cb is not None:
+            self.on_llm_final_cb(text)
         console.print(f"  [quince.secondary]▸[/] [quince.dim]{escape(text)}[/]")
+
+    async def send_text_prompt(self, text: str, *, synthesize_speech: bool = True) -> None:
+        text = text.strip()
+        if not text:
+            return
+
+        if not self.connection.is_connected:
+            logger.warning("Cannot send text prompt: not connected to Basket.")
+            return
+
+        if self.on_user_message_cb is not None:
+            self.on_user_message_cb(text, "text")
+
+        if self._pipeline_busy.is_set():
+            logger.info("Interrupting active turn to send text prompt.")
+            self._playback_interrupted.set()
+            self.player.interrupt()
+            self._pending_cancel_token = self._turn_token
+            try:
+                await self.connection.send(json.dumps(build_cancel_message()))
+            except ConnectionLostError:
+                pass
+            self._recording.clear()
+            self._pipeline_busy.clear()
+            self._playback_active.clear()
+            self.microphone.disable()
+
+        self._turn_token += 1
+        turn_token = self._turn_token
+
+        self._llm_text_parts.clear()
+        self._playback_interrupted.clear()
+        self.player.resume()
+        self._playback_active.clear()
+
+        message = build_text_message(
+            text,
+            llm=self._settings.llm,
+            tts=self._settings.tts,
+            synthesize_speech=synthesize_speech,
+        )
+
+        try:
+            await self.connection.send(json.dumps(message))
+        except ConnectionLostError:
+            logger.warning("Lost connection to Basket while sending text prompt.")
+            self._pipeline_busy.clear()
+            self.status.set(turn="idle")
+            return
+
+        if turn_token != self._turn_token:
+            return
+
+        self._pipeline_busy.set()
+        self.status.set(turn="thinking")
+        logger.info("Text prompt sent: %r (synthesize_speech=%s)", text, synthesize_speech)
+
+    def submit_text(self, text: str, *, synthesize_speech: bool = True) -> None:
+        """Thread-safe submission helper for GUI or other input handlers."""
+        self._schedule(self.send_text_prompt(text, synthesize_speech=synthesize_speech))
 
     # ================================================================
     # MICROPHONE -> BASKET
@@ -368,14 +457,22 @@ class QuinceClient:
             voice=self._settings.tts.voice,
         )
 
+        mic_ok = False
         try:
             self.microphone.open()
-            self.player.open()
-        except AudioStreamError:
-            logger.exception("Fatal audio setup failure; Quince cannot start.")
-            return
+            mic_ok = True
+        except AudioStreamError as exc:
+            logger.warning("Microphone setup failed (%s). Voice push-to-talk disabled; CLI text input active.", exc)
 
-        self.hotkey.install()
+        player_ok = False
+        try:
+            self.player.open()
+            player_ok = True
+        except AudioStreamError as exc:
+            logger.warning("Audio player setup failed (%s). Audio playback disabled.", exc)
+
+        if mic_ok:
+            self.hotkey.install()
         self.status.start()
         self.status.set(turn="idle", connection="connecting")
 
@@ -394,7 +491,8 @@ class QuinceClient:
                     break
 
                 self.status.set(connection="connected")
-                logger.info("Push-to-talk active: hold %s", self._settings.input.push_to_talk_hotkey)
+                if mic_ok:
+                    logger.info("Push-to-talk active: hold %s", self._settings.input.push_to_talk_hotkey)
 
                 try:
                     await self._run_session()
@@ -416,10 +514,13 @@ class QuinceClient:
             except asyncio.CancelledError:
                 pass
 
-            self.hotkey.uninstall()
+            if mic_ok:
+                self.hotkey.uninstall()
             await self.connection.close()
-            self.player.close()
-            self.microphone.close()
+            if player_ok:
+                self.player.close()
+            if mic_ok:
+                self.microphone.close()
             self.status.set(turn="idle", connection="disconnected")
             self.status.stop()
             logger.info("Quince client shut down cleanly.")

@@ -1,9 +1,12 @@
 from quince_mcp.schemas.tool import QuinceTool
 from quince_mcp.tools.util import terminate, reset, chat
 from quince_mcp.tools.system.tools import system, system_tool_tree
+from quince_mcp.tools.files.tools import files, files_tool_tree
+from quince_mcp.tools.web.tools import web, web_tool_tree
 from quince_mcp.tools.memory.tools import memory, memory_tool_tree
 from quince_mcp.tools.productivity.tools import productivity, productivity_tool_tree
 from quince_mcp.tools.knowledge.tools import knowledge, knowledge_tool_tree
+from quince_mcp.tools.browser.tools import browser, browser_tool_tree
 
 
 root = QuinceTool(
@@ -11,14 +14,17 @@ root = QuinceTool(
     kind="category",
     description=(
         "Top-level menu. Pick the category that matches the user's requested capability. "
-        "system = direct Windows computer control and hardware telemetry; "
+        "system = direct Windows computer control, hardware telemetry, power, apps, windows, display, and network; "
+        "files = local file system operations: list directories, read, write, append, search, copy, move, delete files; "
+        "web = live web search via DuckDuckGo, fetch and read webpage contents/articles, live weather, and HTTP/REST requests; "
         "productivity = local Quince notes and countdown timers; use productivity notes for prompts such as 'save this', 'write this down', 'make a note', 'read my notes', or 'edit my note'; "
         "knowledge = Wikipedia and Wikimedia knowledge retrieval; "
-        "memory = stored memories and behavioral commands. "
+        "memory = stored memories and behavioral commands; "
+        "browser = RTSI (Real-Time State Inspection) & live Chrome browser automation. ALWAYS choose browser for any request mentioning 'RTSI', 'browser', 'website', 'open site', 'web page', 'click', 'type in page', 'switch tab', 'fill form', or online tasks in Chrome; do not use browser for plain facts that Wikipedia/knowledge can answer or for local computer controls; "
         "If the request is general conversation, something you can answer directly, or "
         "doesn't need live data from this device or these services, pick chat — never guess a category."
     ),
-    children=[chat, system, productivity, knowledge, memory],
+    children=[chat, system, files, web, productivity, knowledge, memory, browser],
 )
 
 
@@ -28,7 +34,11 @@ TOOL_TREE = {
     "reset": reset,
     "root--chat": chat,
     **system_tool_tree,
+    **files_tool_tree,
+    **web_tool_tree,
     **productivity_tool_tree,
     **knowledge_tool_tree,
-    **memory_tool_tree
+    **memory_tool_tree,
+    **browser_tool_tree,
 }
+

@@ -1,7 +1,10 @@
 import ctypes
 import os
+import platform
 import shutil
+import socket
 import subprocess
+import time
 from ctypes import wintypes
 from datetime import datetime
 from typing import Any
@@ -471,3 +474,515 @@ def _shut_down_system():
         "action": "shut_down_system",
         "initiated": True
     }
+
+
+# ------------------------------------------------------------
+# APPS & WINDOWS
+# ------------------------------------------------------------
+
+def _launch_app(app_name: str, arguments: str | None = None) -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("App launching requires Windows")
+
+    app_map = {
+        "calc": "calc.exe",
+        "calculator": "calc.exe",
+        "notepad": "notepad.exe",
+        "editor": "notepad.exe",
+        "code": "code",
+        "vscode": "code",
+        "chrome": "chrome.exe",
+        "browser": "chrome.exe",
+        "explorer": "explorer.exe",
+        "files": "explorer.exe",
+        "cmd": "cmd.exe",
+        "terminal": "wt.exe",
+        "powershell": "powershell.exe",
+        "paint": "mspaint.exe",
+        "task manager": "taskmgr.exe",
+        "taskmgr": "taskmgr.exe",
+        "settings": "ms-settings:",
+        "control panel": "control.exe",
+        "spotify": "spotify.exe",
+    }
+
+    target = app_map.get(app_name.lower().strip(), app_name.strip())
+
+    try:
+        if arguments:
+            subprocess.Popen(f'"{target}" {arguments}', shell=True)
+        else:
+            try:
+                os.startfile(target)
+            except Exception:
+                subprocess.Popen(f'"{target}"', shell=True)
+
+        return {
+            "launched": True,
+            "app": app_name,
+            "target": target,
+            "arguments": arguments,
+        }
+    except Exception as exc:
+        return {
+            "launched": False,
+            "app": app_name,
+            "error": str(exc),
+        }
+
+
+def _kill_process(name_or_pid: str) -> dict[str, Any]:
+    name_or_pid = name_or_pid.strip()
+    killed = []
+
+    if name_or_pid.isdigit():
+        pid = int(name_or_pid)
+        try:
+            p = psutil.Process(pid)
+            p_name = p.name()
+            p.terminate()
+            killed.append({"pid": pid, "name": p_name})
+        except Exception as exc:
+            return {"success": False, "error": f"Failed to terminate PID {pid}: {exc}"}
+    else:
+        target = name_or_pid.lower()
+        target_exe = target if target.endswith(".exe") else target + ".exe"
+
+        for proc in psutil.process_iter(attrs=["pid", "name"]):
+            try:
+                p_name = str(proc.info.get("name") or "").lower()
+                if p_name in (target, target_exe):
+                    proc.terminate()
+                    killed.append({"pid": proc.info["pid"], "name": proc.info["name"]})
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+    return {
+        "success": bool(killed),
+        "target": name_or_pid,
+        "terminated_count": len(killed),
+        "processes": killed,
+    }
+
+
+def _get_active_window() -> dict[str, Any]:
+    if os.name != "nt":
+        return {"title": "", "error": "Windows only"}
+
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return {"title": "", "active": False}
+
+    length = user32.GetWindowTextLengthW(hwnd)
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buffer, length + 1)
+
+    pid = ctypes.wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    process_name = ""
+    try:
+        process_name = psutil.Process(pid.value).name()
+    except Exception:
+        pass
+
+    return {
+        "title": buffer.value,
+        "pid": pid.value,
+        "process_name": process_name,
+        "active": True,
+    }
+
+
+def _list_open_windows() -> dict[str, Any]:
+    if os.name != "nt":
+        return {"windows": [], "error": "Windows only"}
+
+    user32 = ctypes.windll.user32
+    windows = []
+
+    def enum_cb(hwnd, lparam):
+        if user32.IsWindowVisible(hwnd):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buffer, length + 1)
+                title = buffer.value.strip()
+                if title:
+                    pid = ctypes.wintypes.DWORD()
+                    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                    pname = ""
+                    try:
+                        pname = psutil.Process(pid.value).name()
+                    except Exception:
+                        pass
+                    windows.append({
+                        "title": title,
+                        "pid": pid.value,
+                        "process_name": pname,
+                    })
+        return True
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+    user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+
+    return {
+        "count": len(windows),
+        "windows": windows,
+    }
+
+
+# ------------------------------------------------------------
+# DISPLAY & SCREENSHOT
+# ------------------------------------------------------------
+
+def _take_screenshot(filename: str | None = None) -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("Screenshot requires Windows")
+
+    pictures_dir = Path(os.environ.get("USERPROFILE", ".")) / "Pictures" / "Screenshots"
+    pictures_dir.mkdir(parents=True, exist_ok=True)
+
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshot_{timestamp}.png"
+    elif not filename.lower().endswith(".png"):
+        filename += ".png"
+
+    dest_path = pictures_dir / filename
+    safe_dest = str(dest_path.resolve()).replace("'", "''")
+
+    ps_script = (
+        "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
+        "$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; "
+        "$bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height; "
+        "$g = [System.Drawing.Graphics]::FromImage($bmp); "
+        "$g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); "
+        f"$bmp.Save('{safe_dest}', [System.Drawing.Imaging.ImageFormat]::Png); "
+        "$g.Dispose(); $bmp.Dispose(); "
+        "$bounds.Width.ToString() + 'x' + $bounds.Height.ToString()"
+    )
+
+    res = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
+    res_str = res.stdout.strip()
+    return {
+        "success": dest_path.exists(),
+        "path": str(dest_path),
+        "resolution": res_str,
+        "size_bytes": dest_path.stat().st_size if dest_path.exists() else 0,
+    }
+
+
+def _minimize_all_windows() -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("Minimize all requires Windows")
+
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Command", "(New-Object -ComObject Shell.Application).MinimizeAll()"],
+        capture_output=True,
+        timeout=5,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return {"minimized": True, "action": "show_desktop"}
+
+
+def _get_display_info() -> dict[str, Any]:
+    if os.name != "nt":
+        return {"error": "Windows only"}
+
+    user32 = ctypes.windll.user32
+    w = user32.GetSystemMetrics(0)   # SM_CXSCREEN
+    h = user32.GetSystemMetrics(1)   # SM_CYSCREEN
+    monitors = user32.GetSystemMetrics(80)  # SM_CMONITORS
+    vw = user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+    vh = user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+
+    return {
+        "primary_width": w,
+        "primary_height": h,
+        "monitor_count": monitors,
+        "virtual_width": vw,
+        "virtual_height": vh,
+    }
+
+
+# ------------------------------------------------------------
+# POWER & SESSION
+# ------------------------------------------------------------
+
+def _lock_workstation() -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("Lock requires Windows")
+    ctypes.windll.user32.LockWorkStation()
+    return {"action": "lock_workstation", "locked": True}
+
+
+def _sleep_system() -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("Sleep requires Windows")
+    subprocess.Popen(
+        ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return {"action": "sleep_system", "initiated": True}
+
+
+def _get_system_uptime() -> dict[str, Any]:
+    boot_time = psutil.boot_time()
+    uptime_seconds = int(time.time() - boot_time)
+    days, rem = divmod(uptime_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+
+    return {
+        "boot_time": datetime.fromtimestamp(boot_time).strftime("%Y-%m-%d %H:%M:%S"),
+        "uptime_seconds": uptime_seconds,
+        "uptime_human": f"{days}d {hours}h {minutes}m {seconds}s",
+    }
+
+
+def _get_os_info() -> dict[str, Any]:
+    uname = platform.uname()
+    return {
+        "os": uname.system,
+        "release": uname.release,
+        "version": uname.version,
+        "machine": uname.machine,
+        "processor": uname.processor,
+        "computer_name": os.environ.get("COMPUTERNAME", uname.node),
+        "username": os.environ.get("USERNAME", ""),
+    }
+
+
+# ------------------------------------------------------------
+# NETWORK & CONNECTIVITY
+# ------------------------------------------------------------
+
+def _get_ip_info() -> dict[str, Any]:
+    hostname = socket.gethostname()
+    local_ips = []
+    try:
+        for info in socket.getaddrinfo(hostname, None):
+            ip = info[4][0]
+            if ip not in local_ips and not ip.startswith("127."):
+                local_ips.append(ip)
+    except Exception:
+        pass
+
+    public_ip = "unavailable"
+    try:
+        req = urllib.request.Request("https://api.ipify.org?format=json", headers={"User-Agent": "Quince"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+            public_ip = data.get("ip", "unavailable")
+    except Exception:
+        pass
+
+    return {
+        "hostname": hostname,
+        "local_ips": local_ips,
+        "public_ip": public_ip,
+    }
+
+
+def _ping_host(host: str, count: int = 3) -> dict[str, Any]:
+    host = host.strip()
+    res = subprocess.run(
+        ["ping", "-n", str(count), host],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return {
+        "host": host,
+        "reachable": res.returncode == 0,
+        "raw_output": res.stdout.strip(),
+    }
+
+
+def _check_internet() -> dict[str, Any]:
+    endpoints = [("1.1.1.1", 53), ("8.8.8.8", 53)]
+    reachable = False
+    latency_ms = None
+
+    for host, port in endpoints:
+        try:
+            t0 = time.perf_counter()
+            s = socket.create_connection((host, port), timeout=2.5)
+            s.close()
+            latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+            reachable = True
+            break
+        except Exception:
+            continue
+
+    return {
+        "internet_connected": reachable,
+        "latency_ms": latency_ms,
+    }
+
+
+# ------------------------------------------------------------
+# RUN COMMAND & ENVIRONMENT
+# ------------------------------------------------------------
+
+def _run_command(command: str, timeout_seconds: int = 15) -> dict[str, Any]:
+    command = command.strip()
+    if not command:
+        return {"error": "Empty command"}
+
+    try:
+        res = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return {
+            "command": command,
+            "stdout": res.stdout.strip(),
+            "stderr": res.stderr.strip(),
+            "return_code": res.returncode,
+            "success": res.returncode == 0,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "command": command,
+            "error": f"Command timed out after {timeout_seconds} seconds.",
+            "success": False,
+        }
+    except Exception as exc:
+        return {
+            "command": command,
+            "error": str(exc),
+            "success": False,
+        }
+
+
+def _get_env_var(name: str) -> dict[str, Any]:
+    name = name.strip()
+    val = os.environ.get(name)
+    return {
+        "name": name,
+        "value": val,
+        "exists": val is not None,
+    }
+
+
+def _empty_recycle_bin() -> dict[str, Any]:
+    """Empty the Windows Recycle Bin."""
+    if os.name != "nt":
+        return {"error": "Empty recycle bin requires Windows"}
+
+    cmd = "Clear-RecycleBin -Confirm:$false -Force -ErrorAction SilentlyContinue"
+    res = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    return {
+        "success": res.returncode == 0,
+        "message": "Recycle Bin emptied successfully" if res.returncode == 0 else "Failed to empty Recycle Bin",
+    }
+
+
+def _get_wifi_status() -> dict[str, Any]:
+    """Get active Wi-Fi connection info and nearby networks."""
+    if os.name != "nt":
+        return {"error": "Wi-Fi status requires Windows"}
+
+    try:
+        if_res = subprocess.run(
+            ["netsh", "wlan", "show", "interfaces"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if_text = if_res.stdout
+
+        info: dict[str, Any] = {"connected": False}
+        for line in if_text.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                k = k.strip()
+                v = v.strip()
+                if k == "State":
+                    info["state"] = v
+                    info["connected"] = (v.lower() == "connected")
+                elif k == "SSID":
+                    info["ssid"] = v
+                elif k == "Signal":
+                    info["signal"] = v
+                elif k == "Radio type":
+                    info["radio_type"] = v
+                elif k == "Band":
+                    info["band"] = v
+                elif k == "Channel":
+                    info["channel"] = v
+                elif k == "Receive rate (Mbps)":
+                    info["receive_rate_mbps"] = v
+                elif k == "Transmit rate (Mbps)":
+                    info["transmit_rate_mbps"] = v
+
+        # Nearby visible networks
+        net_res = subprocess.run(
+            ["netsh", "wlan", "show", "networks"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        ssids = []
+        for line in net_res.stdout.splitlines():
+            line_str = line.strip()
+            if line_str.startswith("SSID") and ":" in line_str:
+                ssid_name = line_str.split(":", 1)[1].strip()
+                if ssid_name and ssid_name not in ssids:
+                    ssids.append(ssid_name)
+
+        info["nearby_networks"] = ssids
+        return info
+    except Exception as exc:
+        return {"error": f"Failed to get Wi-Fi status: {exc}"}
+
+
+def _set_volume_level(level: int) -> dict[str, Any]:
+    """Set Windows master volume to a percentage (0 to 100)."""
+    if os.name != "nt":
+        return {"error": "Volume control requires Windows"}
+
+    target = max(0, min(int(level), 100))
+    user32 = ctypes.windll.user32
+    KEYEVENTF_KEYUP = 0x0002
+    VK_VOLUME_DOWN = 0xAE
+    VK_VOLUME_UP = 0xAF
+
+    # Zero out volume first (50 steps of 2%)
+    for _ in range(50):
+        user32.keybd_event(VK_VOLUME_DOWN, 0, 0, 0)
+        user32.keybd_event(VK_VOLUME_DOWN, 0, KEYEVENTF_KEYUP, 0)
+
+    # Step up to target (target // 2 steps)
+    steps_up = target // 2
+    for _ in range(steps_up):
+        user32.keybd_event(VK_VOLUME_UP, 0, 0, 0)
+        user32.keybd_event(VK_VOLUME_UP, 0, KEYEVENTF_KEYUP, 0)
+
+    return {
+        "target_volume_percent": target,
+        "success": True,
+    }
+
+

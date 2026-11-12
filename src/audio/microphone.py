@@ -61,27 +61,61 @@ class Microphone:
 
         self._wasapi_settings = self._make_wasapi_settings()
 
+        kwargs = dict(
+            samplerate=self._settings.sample_rate,
+            channels=self._settings.channels,
+            dtype="int16",
+            device=self._device_index,
+            blocksize=self._settings.blocksize,
+            latency=self._settings.input_latency,
+            callback=self._callback,
+            clip_off=False,
+            dither_off=True,
+        )
+
+        if self._wasapi_settings is not None and host_api:
+            kwargs["extra_settings"] = self._wasapi_settings
+
+        stream_opened = False
+        last_error = None
+
+        # Attempt 1: Configured device with extra settings (WASAPI auto-convert)
         try:
-            kwargs = dict(
-                samplerate=self._settings.sample_rate,
-                channels=self._settings.channels,
-                dtype="int16",
-                device=self._device_index,
-                blocksize=self._settings.blocksize,
-                latency=self._settings.input_latency,
-                callback=self._callback,
-                clip_off=False,
-                dither_off=True,
-            )
-
-            if self._wasapi_settings is not None and host_api:
-                kwargs["extra_settings"] = self._wasapi_settings
-
             self._stream = sd.RawInputStream(**kwargs)
             self._stream.start()
-
+            stream_opened = True
         except Exception as exc:
-            raise AudioStreamError(f"Failed to open microphone stream: {exc}") from exc
+            last_error = exc
+            logger.warning("Microphone start attempt 1 failed on device %s: %s", self._device_index, exc)
+
+        # Attempt 2: Same device without extra_settings
+        if not stream_opened and "extra_settings" in kwargs:
+            try:
+                kwargs.pop("extra_settings", None)
+                self._stream = sd.RawInputStream(**kwargs)
+                self._stream.start()
+                stream_opened = True
+                logger.info("Microphone opened on device %s without extra_settings.", self._device_index)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Microphone start attempt 2 failed on device %s: %s", self._device_index, exc)
+
+        # Attempt 3: Fallback to system default input device
+        if not stream_opened and (self._device_index is not None or self._settings.fallback_to_default_on_missing):
+            try:
+                kwargs["device"] = None
+                kwargs.pop("extra_settings", None)
+                self._stream = sd.RawInputStream(**kwargs)
+                self._stream.start()
+                self._device_index = None
+                stream_opened = True
+                logger.info("Microphone opened on system default input device.")
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Microphone fallback to default input failed: %s", exc)
+
+        if not stream_opened:
+            raise AudioStreamError(f"Failed to open microphone stream: {last_error}") from last_error
 
         logger.info(
             "Microphone ready: %d Hz mono PCM16 (device index=%s, host_api=%s, blocksize=%d)",

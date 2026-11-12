@@ -223,6 +223,10 @@ class StatusLine:
         self._refresh_per_second = refresh_per_second
         self._start_time = 0.0
         self._started = False
+        self._listeners: list[Any] = []
+
+    def add_listener(self, listener: Any) -> None:
+        self._listeners.append(listener)
 
     def start(self) -> None:
         if self._started:
@@ -256,6 +260,11 @@ class StatusLine:
             )
 
         self._print_status(snapshot)
+        for listener in list(self._listeners):
+            try:
+                listener(snapshot)
+            except Exception:
+                pass
 
     def _print_status(
         self,

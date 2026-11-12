@@ -33,12 +33,15 @@ class BasketEventHandler:
         on_cancelled: Callable[[], None],
         on_llm_token: Callable[[str], None],
         on_llm_final: Callable[[str], None],
+        on_stt_final: Callable[[str], None] | None = None,
     ) -> None:
         self._player = player
         self._turn_finished_cb = on_turn_finished
         self._cancelled_cb = on_cancelled
         self._llm_token_cb = on_llm_token
         self._llm_final_cb = on_llm_final
+        self._stt_final_cb = on_stt_final
+        self._turn_had_output = False
 
         # event.type -> log-only handler. Anything with a caller-visible
         # side effect is handled explicitly in _dispatch instead.
@@ -51,11 +54,6 @@ class BasketEventHandler:
             "stt.final": lambda e: logger.info("STT final: %r", e.data),
             "tts.started": lambda e: logger.info("TTS started: %r", e.data),
             "tts.completed": lambda e: logger.info("TTS completed."),
-            "error": lambda e: logger.error(
-                "Basket reported an error: code=%s message=%s",
-                e.raw.get("code"),
-                e.raw.get("message"),
-            ),
         }
 
     # ------------------------------------------------------------
@@ -92,12 +90,23 @@ class BasketEventHandler:
     # ------------------------------------------------------------
 
     def _dispatch(self, event: BasketEvent) -> None:
-        # Events with real side effects, handled explicitly.
+        if event.type in ("started", "pipeline.started"):
+            self._turn_had_output = False
+
+        if event.type == "stt.final":
+            text = str(event.data or "").strip()
+            if text and self._stt_final_cb is not None:
+                self._stt_final_cb(text)
+            logger.info("STT final: %r", event.data)
+            return
+
         if event.type == "llm.token":
+            self._turn_had_output = True
             self._llm_token_cb(str(event.data or ""))
             return
 
         if event.type == "llm.final":
+            self._turn_had_output = True
             text = str(event.data or "").strip()
             if text:
                 self._llm_final_cb(text)
@@ -114,6 +123,15 @@ class BasketEventHandler:
             logger.info("Voice pipeline completed.")
             return
 
+        if event.type == "error":
+            self._turn_finished_cb()
+            code = event.raw.get("code", "pipeline_failed")
+            msg = event.raw.get("message", "An unexpected error occurred.")
+            logger.error("Basket reported an error: code=%s message=%s", code, msg)
+            if not self._turn_had_output:
+                self._llm_final_cb(f"[Notice] Basket reported: {msg}")
+            return
+
         # Everything else is log-only.
         handler = self._log_handlers.get(event.type)
 
@@ -122,3 +140,4 @@ class BasketEventHandler:
             return
 
         handler(event)
+

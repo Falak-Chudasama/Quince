@@ -5,3 +5,10 @@ __pycache__/
 qwen3-tts/
 .vscode/
 quince_notes/
+# Bridge auto-generated token
+quince_mcp/bridge/.bridge_token
+# Extension build artifacts
+extension/node_modules/
+extension/dist/
+# Test artifacts
+.pytest_cache/

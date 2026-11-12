@@ -60,6 +60,41 @@ def build_stop_message() -> dict[str, Any]:
     }
 
 
+def build_text_message(
+    text: str,
+    *,
+    llm: LlmSettings | None = None,
+    tts: TtsSettings | None = None,
+    synthesize_speech: bool = True,
+) -> dict[str, Any]:
+    """The message that sends a text prompt to Basket."""
+    message = build_message()
+    data: dict[str, Any] = {
+        **message,
+        "type": "text_input",
+        "text": text,
+        "synthesize_speech": synthesize_speech,
+    }
+    if llm is not None:
+        data["llm"] = {
+            "model": llm.model,
+            "messages": llm.messages,
+            "temperature": llm.temperature,
+            "top_p": llm.top_p,
+            "max_tokens": llm.max_tokens,
+            "stop": llm.stop,
+            "seed": llm.seed,
+            "system_prompt": llm.system_prompt,
+            "abstracted": llm.abstracted,
+        }
+    if tts is not None:
+        data["tts"] = {
+            "voice": tts.voice,
+            "temperature": tts.temperature,
+        }
+    return data
+
+
 def build_cancel_message() -> dict[str, Any]:
     message = build_message()
     return {

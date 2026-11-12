@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Quince Bridge Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge"></div>
+      <h1>Quince Bridge Settings</h1>
+    </div>
+
+    <form id="settings-form">
+      <div class="field">
+        <label for="bridge-port">Bridge Port</label>
+        <input type="number" id="bridge-port" value="7100" min="1024" max="65535">
+        <div class="hint">The port the local Quince MCP bridge server listens on (default 7100).</div>
+      </div>
+
+      <div class="field">
+        <label for="bridge-token">Bridge Token</label>
+        <input type="password" id="bridge-token" placeholder="Paste bridge token from Quince">
+        <div class="hint">Found in quince_mcp/bridge/.bridge_token or terminal log output.</div>
+      </div>
+
+      <div class="field checkbox">
+        <input type="checkbox" id="risk-gate" checked>
+        <label for="risk-gate">Enable Risk Gate (Require confirmation for sensitive actions like send/submit/delete)</label>
+      </div>
+
+      <div class="field">
+        <label for="blocked-hosts">Blocked Hosts (one per line)</label>
+        <textarea id="blocked-hosts" rows="3" placeholder="chromewebstore.google.com"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="sensitive-hosts">Sensitive Hosts (always prompt confirmation)</label>
+        <textarea id="sensitive-hosts" rows="3" placeholder="banking.example.com"></textarea>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">Save Settings</button>
+        <button type="button" id="test-btn" class="btn secondary">Test Connection</button>
+      </div>
+      <div id="status-msg" class="status-msg"></div>
+    </form>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

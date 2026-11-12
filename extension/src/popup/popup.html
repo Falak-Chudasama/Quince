@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Quince</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <div class="badge"></div>
+      <h2>Quince Bridge</h2>
+    </div>
+    <div id="status-pill" class="status-pill disconnected">Disconnected</div>
+  </div>
+
+  <div class="section">
+    <div class="info-row">
+      <span class="label">Bridge URL</span>
+      <span id="bridge-url" class="value">ws://127.0.0.1:7100/</span>
+    </div>
+    <div class="info-row">
+      <span class="label">Session</span>
+      <span id="session-info" class="value">None</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="pause-btn" class="btn warning">Pause Quince</button>
+    <button id="options-btn" class="btn secondary">Options</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Controlled Tabs</div>
+    <div id="tabs-list" class="tabs-list">
+      <div class="empty">No controlled tabs</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

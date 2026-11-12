@@ -64,27 +64,61 @@ class PCMPlayer:
 
         self._wasapi_settings = self._make_wasapi_settings()
 
+        kwargs = dict(
+            samplerate=self._tts_settings.sample_rate,
+            channels=self._tts_settings.channels,
+            dtype="int16",
+            device=self._device_index,
+            blocksize=self._audio_settings.blocksize,
+            latency=self._audio_settings.output_latency,
+            callback=self._callback,
+            clip_off=False,
+            dither_off=True,
+        )
+
+        if self._wasapi_settings is not None and host_api:
+            kwargs["extra_settings"] = self._wasapi_settings
+
+        stream_opened = False
+        last_error = None
+
+        # Attempt 1: Configured device with extra settings
         try:
-            kwargs = dict(
-                samplerate=self._tts_settings.sample_rate,
-                channels=self._tts_settings.channels,
-                dtype="int16",
-                device=self._device_index,
-                blocksize=self._audio_settings.blocksize,
-                latency=self._audio_settings.output_latency,
-                callback=self._callback,
-                clip_off=False,
-                dither_off=True,
-            )
-
-            if self._wasapi_settings is not None and host_api:
-                kwargs["extra_settings"] = self._wasapi_settings
-
             self._stream = sd.RawOutputStream(**kwargs)
             self._stream.start()
-
+            stream_opened = True
         except Exception as exc:
-            raise AudioStreamError(f"Failed to open TTS playback stream: {exc}") from exc
+            last_error = exc
+            logger.warning("TTS playback start attempt 1 failed on device %s: %s", self._device_index, exc)
+
+        # Attempt 2: Same device without extra_settings
+        if not stream_opened and "extra_settings" in kwargs:
+            try:
+                kwargs.pop("extra_settings", None)
+                self._stream = sd.RawOutputStream(**kwargs)
+                self._stream.start()
+                stream_opened = True
+                logger.info("TTS playback opened on device %s without extra_settings.", self._device_index)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("TTS playback start attempt 2 failed on device %s: %s", self._device_index, exc)
+
+        # Attempt 3: Fallback to system default output device
+        if not stream_opened and (self._device_index is not None or self._audio_settings.fallback_to_default_on_missing):
+            try:
+                kwargs["device"] = None
+                kwargs.pop("extra_settings", None)
+                self._stream = sd.RawOutputStream(**kwargs)
+                self._stream.start()
+                self._device_index = None
+                stream_opened = True
+                logger.info("TTS playback opened on system default output device.")
+            except Exception as exc:
+                last_error = exc
+                logger.warning("TTS playback fallback to default output failed: %s", exc)
+
+        if not stream_opened:
+            raise AudioStreamError(f"Failed to open TTS playback stream: {last_error}") from last_error
 
         logger.info(
             "TTS playback ready: %d Hz mono PCM16 (device index=%s, host_api=%s, blocksize=%d)",
