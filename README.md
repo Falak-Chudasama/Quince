@@ -84,6 +84,11 @@ Most desktop AI assistants and tool-calling runtimes suffer from fundamental arc
 
 ## Architecture
 
+<div align="center">
+  <img src="docs/architecture/system-architecture.jpg" alt="Quince and Basket End-to-End System Architecture" width="100%" style="border-radius: 12px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.4);" />
+  <p><em>End-to-End Architecture: User client interface, Basket backend orchestration, and Quince MCP hierarchical tool registry.</em></p>
+</div>
+
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        User & Desktop Environment                      │
@@ -149,6 +154,25 @@ root
 └── chat            -> Direct conversation routing without external tool execution
 ```
 
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%" align="center" valign="top">
+        <b>Tool Discovery & Execution Lifecycle</b><br /><br />
+        <img src="docs/architecture/tool-discovery-flow.jpg" alt="Tool Discovery and Execution Flow" width="100%" style="border-radius: 10px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 8px 24px -6px rgba(0,0,0,0.35);" />
+        <br /><br />
+        <em>Six-step dynamic schema discovery and execution pipeline between Basket and Quince.</em>
+      </td>
+      <td width="50%" align="center" valign="top">
+        <b>Multi-Task Tool Chaining & State Reset</b><br /><br />
+        <img src="docs/architecture/multi-task-flow.jpg" alt="Example Multi-Task Tool Call Flow" width="100%" style="border-radius: 10px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 8px 24px -6px rgba(0,0,0,0.35);" />
+        <br /><br />
+        <em>Compositional execution across branches with <code>reset</code>, preserving agent context.</em>
+      </td>
+    </tr>
+  </table>
+</div>
+
 ### Navigation & Control Flow
 The MCP server exposes a single callable tool: `navigate(tool_id, arguments)`.
 
@@ -168,41 +192,48 @@ The MCP server exposes a single callable tool: `navigate(tool_id, arguments)`.
 
 ### Multi-Step Composition Walkthrough
 
-A user asks: *"Check my GPU temperature, search for recommended thermal limits, and write them in my notes."*
+A user asks: *"Search for the top locations in Mumbai and save them to Notes"*
 
 ```
-User Prompt
+User Prompt: "Search for the top locations in Mumbai and save them to Notes"
     │
     ▼
-LLM in Basket ──► navigate("root--system--hardware--get-gpu-temp")
+LLM in Basket ──► navigate("root--knowledge")
                       │
                       ▼
-                  Quince MCP returns GPU temperature
+                  Quince MCP returns Knowledge (Wikipedia) schema
                       │
     ┌─────────────────┘
     ▼
-LLM retains GPU temp ──► navigate("reset")
+LLM executes search ──► navigate("root--knowledge--wikipedia--wiki-search", {"query": "Mumbai"})
+                            │
+                            ▼
+                        Quince MCP returns Mumbai locations to LLM
+                            │
+    ┌───────────────────────┘
+    ▼
+LLM retains findings ──► navigate("reset")
                              │
                              ▼
-                         Quince MCP resets navigation to root menu
+                         Quince MCP resets navigation to root (context preserved)
                              │
     ┌────────────────────────┘
     ▼
-LLM in Basket ──► navigate("root--web--search", {"query": "NVIDIA thermal limits"})
+LLM in Basket ──► navigate("root--productivity")
                       │
                       ▼
-                  Quince MCP returns web search results
+                  Quince MCP returns Productivity (Notes) schema
                       │
     ┌─────────────────┘
     ▼
-LLM retains findings ──► navigate("reset") ──► navigate("root--productivity--notes--add-note", {...})
-                                                   │
-                                                   ▼
-                                               Note created successfully
-                                                   │
-    ┌──────────────────────────────────────────────┘
+LLM writes note ────► navigate("root--productivity--notes--write-note", {"title": "Mumbai Spots", ...})
+                          │
+                          ▼
+                      Note saved to local storage
+                          │
+    ┌─────────────────────┘
     ▼
-LLM calls navigate("terminate") ──► Basket delivers spoken voice response
+LLM calls navigate("terminate") ──► Breaks tool loop; Basket delivers spoken voice response
 ```
 
 ### Context & Token Efficiency
