@@ -1,20 +1,35 @@
 import { getAccessibleName } from './accname.js';
 import { getElementRole } from './roles.js';
 import { contentState } from './state.js';
-import { isElementVisible } from './visibility.js';
+import { getViewportPosition, isElementVisible } from './visibility.js';
 
 interface FindResult {
   ref: string;
   role: string;
   name: string;
+  position: 'in_viewport' | 'above' | 'below';
   score: number;
 }
 
-export function findInPage(query: string, maxResults: number = 5): { results: Array<{ ref: string; role: string; name: string }> } {
+export function findInPage(
+  query: string,
+  maxResults: number = 5
+): {
+  results: Array<{ ref: string; role: string; name: string; position: 'in_viewport' | 'above' | 'below' }>;
+  counts: { total: number; in_viewport: number; above_viewport: number; below_viewport: number };
+} {
   const q = query.trim().toLowerCase();
-  if (!q) return { results: [] };
+  if (!q) {
+    return {
+      results: [],
+      counts: { total: 0, in_viewport: 0, above_viewport: 0, below_viewport: 0 },
+    };
+  }
 
   const matches: FindResult[] = [];
+  let inViewportCount = 0;
+  let aboveCount = 0;
+  let belowCount = 0;
 
   const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT, {
     acceptNode(node) {
@@ -46,7 +61,12 @@ export function findInPage(query: string, maxResults: number = 5): { results: Ar
 
     if (score > 0) {
       const ref = contentState.getOrCreateRef(el);
-      matches.push({ ref, role, name: name || text.slice(0, 40), score });
+      const position = getViewportPosition(el);
+      if (position === 'in_viewport') inViewportCount++;
+      else if (position === 'above') aboveCount++;
+      else belowCount++;
+
+      matches.push({ ref, role, name: name || text.slice(0, 40), position, score });
     }
 
     el = walker.nextNode() as Element | null;
@@ -54,7 +74,13 @@ export function findInPage(query: string, maxResults: number = 5): { results: Ar
 
   matches.sort((a, b) => b.score - a.score);
   return {
-    results: matches.slice(0, maxResults).map(({ ref, role, name }) => ({ ref, role, name })),
+    results: matches.slice(0, maxResults).map(({ ref, role, name, position }) => ({ ref, role, name, position })),
+    counts: {
+      total: matches.length,
+      in_viewport: inViewportCount,
+      above_viewport: aboveCount,
+      below_viewport: belowCount,
+    },
   };
 }
 

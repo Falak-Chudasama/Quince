@@ -27,12 +27,13 @@ class BasketClient():
                 "application": self.application
             })
 
-    async def delete_memory(self, memory_id: str):
+    async def delete_memory(self, memory_id: str | None = None, **kwargs):
+        resolved_id = memory_id or kwargs.get("memory-id", "")
         return await self.memory_client.post(
             url="delete",
             args={
                 "application": self.application,
-                "memory_id": memory_id
+                "memory_id": resolved_id,
             }
         )
 
@@ -61,12 +62,13 @@ class BasketClient():
                 "application": self.application
             })
 
-    async def delete_command(self, command_id: str):
+    async def delete_command(self, command_id: str | None = None, **kwargs):
+        resolved_id = command_id or kwargs.get("command-id", "")
         return await self.command_client.post(
             url="delete",
             args={
                 "application": self.application,
-                "command_id": command_id
+                "command_id": resolved_id,
             }
         )
 

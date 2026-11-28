@@ -1,6 +1,8 @@
 export interface BridgeMessage {
+  v?: number;
+  t?: number;
   id?: string;
-  type?: 'hello' | 'hello_ack' | 'req' | 'res' | 'event' | 'ping' | 'pong';
+  type?: 'hello' | 'hello_ack' | 'req' | 'request' | 'res' | 'response' | 'event' | 'ping' | 'pong';
   method?: string;
   params?: Record<string, any>;
   result?: Record<string, any>;

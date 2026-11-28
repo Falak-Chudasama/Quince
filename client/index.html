@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icons/quince-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#F8F9F5" />
+    <title>Quince</title>
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem('quince_theme_preference') || 'system';
+          var hour = new Date().getHours();
+          var systemDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? true
+              : hour >= 19 || hour < 6;
+          var isDark = pref === 'dark' || (pref === 'system' && systemDark);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', '#121310');
+          } else {
+            document.documentElement.classList.remove('dark');
+            var meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', '#F8F9F5');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body
+    class="bg-[#F8F9F5] dark:bg-[#121310] text-stone-900 dark:text-[#F3F4F1] antialiased selection:bg-quince-200/70 selection:text-stone-950 dark:selection:bg-quince-400/25 dark:selection:text-quince-200"
+  >
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

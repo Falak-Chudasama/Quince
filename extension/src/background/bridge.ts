@@ -7,10 +7,13 @@ import { log } from './logger.js';
 import { handleRequest } from './router.js';
 import { getSettings } from './settings.js';
 
+const BRIDGE_HOSTS = Array.from(new Set([DEFAULT_BRIDGE_HOST, '127.0.0.5']));
+
 class BridgeClient {
   private ws: WebSocket | null = null;
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
+  private hostIndex: number = 0;
   private reconnectTimer: any = null;
 
   async connect(): Promise<void> {
@@ -20,7 +23,8 @@ class BridgeClient {
 
     const settings = await getSettings();
     const port = settings.bridgePort || DEFAULT_BRIDGE_PORT;
-    const url = `ws://${DEFAULT_BRIDGE_HOST}:${port}/`;
+    const host = BRIDGE_HOSTS[this.hostIndex] || DEFAULT_BRIDGE_HOST;
+    const url = `ws://${host}:${port}/`;
 
     log('info', 'bridge', `Connecting to bridge at ${url}...`);
 
@@ -28,12 +32,13 @@ class BridgeClient {
       this.ws = new WebSocket(url);
     } catch (err: any) {
       log('warn', 'bridge', `Failed to initialize WebSocket: ${err.message}`);
-      this.scheduleReconnect();
+      this.hostIndex = (this.hostIndex + 1) % BRIDGE_HOSTS.length;
+      this.scheduleReconnect(this.hostIndex !== 0);
       return;
     }
 
     this.ws.onopen = async () => {
-      log('info', 'bridge', 'WebSocket open. Sending hello...');
+      log('info', 'bridge', `WebSocket open on ${url}. Sending hello...`);
       const s = await getSettings();
       this.send(makeHello(s.bridgeToken));
     };
@@ -51,10 +56,16 @@ class BridgeClient {
     };
 
     this.ws.onclose = (event) => {
-      log('warn', 'bridge', `WebSocket closed (code=${event.code}, reason=${event.reason})`);
+      log('warn', 'bridge', `WebSocket closed on ${url} (code=${event.code}, reason=${event.reason})`);
+      const wasConnected = this.isConnected;
       this.isConnected = false;
       stopKeepAlive();
-      this.scheduleReconnect();
+      if (!wasConnected) {
+        this.hostIndex = (this.hostIndex + 1) % BRIDGE_HOSTS.length;
+        this.scheduleReconnect(this.hostIndex !== 0);
+      } else {
+        this.scheduleReconnect(false);
+      }
     };
 
     this.ws.onerror = (err) => {
@@ -100,8 +111,16 @@ class BridgeClient {
     }
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(immediateFallback = false): void {
     if (this.reconnectTimer) return;
+    if (immediateFallback) {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        this.connect();
+      }, 150);
+      return;
+    }
+
     this.reconnectAttempts++;
     const base = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 15000);
     const jitter = base * (0.8 + Math.random() * 0.4);

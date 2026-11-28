@@ -248,11 +248,12 @@ async def test_consecutive_failure_limit():
 @pytest.mark.asyncio
 async def test_repeat_guard_warning_and_termination():
     bridge = create_fake_bridge()
-    # Action results in no_visible_change
+    # Action results in NO_EFFECT
     bridge.call = AsyncMock(return_value={
         "tab_id": 1,
         "state_change": {
             "effect": "none",
+            "causal_outcome": "NO_EFFECT",
             "no_visible_change": True,
             "after": {"url": "https://example.com/page"},
         },
@@ -263,25 +264,23 @@ async def test_repeat_guard_warning_and_termination():
     session.state = State.DECIDE
     session.tab_id = 1
 
-    # Actions 1 & 2
-    for _ in range(2):
-        await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
-        await machine.handle("root--browser--record-comparison", {"comparison": "none"}, describe_root_fn=AsyncMock())
-        await machine.handle("root--browser--continue", {}, describe_root_fn=AsyncMock())
-
-    # Action 3: injects loop_warning
-    res3 = await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
-    assert "NOTE: You repeated the same action and nothing changed" in res3["result"]["state_change_text"]
-
+    # Action 1 executes and records NO_EFFECT -> enters COMPARE -> JUDGE -> DECIDE
+    res1 = await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
+    assert session.state == State.COMPARE
+    assert "[LAST ACTION] NO_EFFECT" in res1["result"]["state_change_text"]
     await machine.handle("root--browser--record-comparison", {"comparison": "none"}, describe_root_fn=AsyncMock())
     await machine.handle("root--browser--continue", {}, describe_root_fn=AsyncMock())
 
-    # Action 4
-    await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
-    await machine.handle("root--browser--record-comparison", {"comparison": "none"}, describe_root_fn=AsyncMock())
-    await machine.handle("root--browser--continue", {}, describe_root_fn=AsyncMock())
+    # Attempts 2-4: identical dead (click, e1) against unchanged state fingerprint is blocked by RTSI
+    for _ in range(3):
+        res_blk = await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
+        assert res_blk["success"] is False
+        assert res_blk["terminate"] is False
+        assert res_blk["result"]["recoverable"] is True
+        assert res_blk["result"]["error"] == "repeated_dead_action"
+        assert session.state == State.DECIDE
 
-    # Action 5: triggers repeat limit termination
+    # Attempt 5: triggers repeat limit termination
     res5 = await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
     assert session.state == State.ENDED
     assert res5["result"]["rtsi_outcome"]["status"] == "failed"
@@ -346,3 +345,241 @@ async def test_abort_active_session():
     await machine.abort_active_session(outcome="reset")
     assert session.state == State.ENDED
     assert session.outcome == "reset"
+
+
+@pytest.mark.asyncio
+async def test_search_without_submit_value_changed_and_blocks_premature_exit_once():
+    bridge = MagicMock()
+    bridge.is_connected = True
+    bridge.connected_info = {"version": "1.0.0"}
+
+    snap_unsubmitted = {
+        "text": (
+            "[PAGE] Amazon | https://www.amazon.com/\n"
+            "[VIEWPORT] 0% AT TOP | ~0.0 above | ~4.0 below | can_scroll: down\n"
+            '[FOCUS] [e3] searchbox value="headphones" (UNSUBMITTED — press Enter or click submit button)\n'
+            '[e3] searchbox "Search Amazon" value="headphones" [focused] [searchbox, enter-submits]'
+        ),
+        "generation": 2,
+        "page": {"url": "https://www.amazon.com/", "title": "Amazon"},
+        "observation_meta": {
+            "url": "https://www.amazon.com/",
+            "title": "Amazon",
+            "state_fingerprint": "fp_amazon_typed",
+        },
+    }
+    type_resp = {
+        "state_change": {
+            "effect": "value_set",
+            "causal_outcome": "VALUE_CHANGED",
+            "target": {"ref": "e3", "role": "searchbox"},
+            "focus": {"before": "e3", "after": "e3", "after_role": "searchbox", "after_value": "headphones"},
+            "dom": {
+                "added": [],
+                "removed": [],
+                "changed": [{"ref": "e3", "desc": 'searchbox "Search Amazon"', "fields": {"value": ["", "headphones"]}}],
+            },
+            "before": {"url": "https://www.amazon.com/", "title": "Amazon"},
+            "after": {"url": "https://www.amazon.com/", "title": "Amazon", "generation": 2},
+            "state_fingerprint": "fp_amazon_typed",
+            "wait": {"settled": True, "reason": "quiet", "elapsed_ms": 120},
+        }
+    }
+    enter_resp = {
+        "state_change": {
+            "effect": "navigated",
+            "causal_outcome": "NAVIGATED",
+            "navigated": True,
+            "navigation_kind": "full",
+            "before": {"url": "https://www.amazon.com/", "title": "Amazon"},
+            "after": {"url": "https://www.amazon.com/s?k=headphones", "title": "Amazon: headphones", "generation": 3},
+            "state_fingerprint": "fp_amazon_results",
+            "wait": {"settled": True, "reason": "quiet", "elapsed_ms": 300},
+        }
+    }
+    snap_results = {
+        "text": "[PAGE] Amazon: headphones | https://www.amazon.com/s?k=headphones\n[e10] heading(1) \"Results\"",
+        "generation": 3,
+        "page": {"url": "https://www.amazon.com/s?k=headphones", "title": "Amazon: headphones"},
+        "observation_meta": {"url": "https://www.amazon.com/s?k=headphones", "title": "Amazon: headphones", "state_fingerprint": "fp_amazon_results"},
+    }
+
+    bridge.call = AsyncMock(side_effect=[
+        type_resp,         # act.type
+        snap_unsubmitted,  # adaptive observation
+        snap_unsubmitted,  # premature termination corrective observation
+        enter_resp,        # act.press_key Enter
+        snap_results,      # adaptive observation after Enter
+        snap_results,      # final snapshot in _do_termination
+    ])
+
+    machine = RtsiMachine(bridge=bridge, settings=BridgeSettings(judge_policy="adaptive", termination_ends_loop=True))
+    session = machine._sessions.begin()
+    session.state = State.DECIDE
+    session.tab_id = 1
+    session.goal = "Search Amazon for headphones"
+    session.ref_desc = {"e3": 'searchbox "Search Amazon"'}
+
+    # 1. Type without submit
+    res_type = await machine.handle("root--browser--type-text", {"ref": "e3", "text": "headphones", "submit": False}, describe_root_fn=AsyncMock())
+    assert "[LAST ACTION] VALUE_CHANGED — Input value updated; page did NOT navigate and form is not yet submitted." in res_type["result"]["state_change_text"]
+    assert "UNSUBMITTED" in res_type["result"]["observation"]
+    assert session.unsubmitted_search is True
+
+    # 2. Premature exit is blocked once
+    res_premature = await machine.handle(
+        "root--browser--successful-termination",
+        {"result_summary": "Typed headphones into Amazon search"},
+        describe_root_fn=AsyncMock(),
+    )
+    assert res_premature["success"] is False
+    assert res_premature["terminate"] is False
+    assert res_premature["recoverable"] is True
+    assert res_premature["result"]["error"] == "premature_exit_blocked"
+    assert "Call key('Enter') or click the submit button" in res_premature["message"]
+    assert session.state == State.DECIDE
+    assert session.premature_exit_rejected is True
+
+    # 3. Submit via Enter -> NAVIGATED clears unsubmitted_search
+    res_enter = await machine.handle("root--browser--press-key", {"key": "Enter", "ref": "e3"}, describe_root_fn=AsyncMock())
+    assert "[LAST ACTION] NAVIGATED" in res_enter["result"]["state_change_text"]
+    assert session.unsubmitted_search is False
+
+    # 4. Now successful-termination proceeds
+    res_done = await machine.handle(
+        "root--browser--successful-termination",
+        {"result_summary": "Searched Amazon for headphones"},
+        describe_root_fn=AsyncMock(),
+    )
+    assert res_done["success"] is True
+    assert res_done["terminate"] is True
+    assert session.state == State.ENDED
+
+
+@pytest.mark.asyncio
+async def test_type_with_submit_true_produces_navigated_and_clears_unsubmitted():
+    bridge = MagicMock()
+    bridge.is_connected = True
+    bridge.call = AsyncMock(side_effect=[
+        {
+            "state_change": {
+                "effect": "navigated",
+                "causal_outcome": "NAVIGATED",
+                "navigated": True,
+                "navigation_kind": "full",
+                "before": {"url": "https://www.amazon.com/", "title": "Amazon"},
+                "after": {"url": "https://www.amazon.com/s?k=usb+hub", "title": "Amazon: usb hub"},
+                "wait": {"settled": True, "reason": "quiet", "elapsed_ms": 350},
+            }
+        },
+        {
+            "text": '[PAGE] Amazon: usb hub | https://www.amazon.com/s?k=usb+hub\n[e1] heading(1) "Results"',
+            "generation": 4,
+            "page": {"url": "https://www.amazon.com/s?k=usb+hub", "title": "Amazon: usb hub"},
+        },
+    ])
+    machine = RtsiMachine(bridge=bridge, settings=BridgeSettings(judge_policy="adaptive"))
+    session = machine._sessions.begin()
+    session.state = State.DECIDE
+    session.tab_id = 1
+    session.ref_desc = {"e3": 'searchbox "Search Amazon"'}
+
+    res = await machine.handle(
+        "root--browser--type-text",
+        {"ref": "e3", "text": "usb hub", "submit": True},
+        describe_root_fn=AsyncMock(),
+    )
+    assert res["success"] is True
+    assert session.unsubmitted_search is False
+    assert "[LAST ACTION] NAVIGATED" in res["result"]["state_change_text"]
+    act_call = bridge.call.call_args_list[0][0]
+    assert act_call[0] == "act.type"
+    assert act_call[1]["submit"] is True
+    assert act_call[1]["press_enter"] is True
+    assert act_call[1]["clear"] is True
+
+
+@pytest.mark.asyncio
+async def test_two_consecutive_no_effect_triggers_stall_breaker_and_recovery_hint():
+    bridge = MagicMock()
+    bridge.is_connected = True
+    no_effect_sc = {
+        "state_change": {
+            "effect": "none",
+            "causal_outcome": "NO_EFFECT",
+            "no_visible_change": True,
+            "before": {"url": "https://example.com"},
+            "after": {"url": "https://example.com", "state_fingerprint": "fp_static"},
+            "state_fingerprint": "fp_static",
+            "wait": {"settled": True, "reason": "quiet", "elapsed_ms": 100},
+        }
+    }
+    snap_static = {
+        "text": "[e1] button \"Hidden\"\n[e2] button \"Dead\"",
+        "page": {"url": "https://example.com", "title": "Example"},
+        "observation_meta": {"url": "https://example.com", "title": "Example", "state_fingerprint": "fp_static"},
+    }
+    bridge.call = AsyncMock(side_effect=[
+        no_effect_sc,  # click e1 -> NO_EFFECT (1)
+        no_effect_sc,  # click e2 -> NO_EFFECT (2) -> triggers stall breaker -> COMPARE
+        snap_static,   # continue -> observation with [RECOVERY]
+        snap_static,   # blocked click e2 -> observation with [RECOVERY]
+    ])
+    machine = RtsiMachine(bridge=bridge, settings=BridgeSettings(judge_policy="adaptive"))
+    session = machine._sessions.begin()
+    session.state = State.DECIDE
+    session.tab_id = 1
+    session.current_state_fingerprint = "fp_static"
+
+    # 1st NO_EFFECT (click e1)
+    await machine.handle("root--browser--click", {"ref": "e1"}, describe_root_fn=AsyncMock())
+    assert session.consecutive_no_effect_count() == 1
+    await machine.handle("root--browser--record-comparison", {"comparison": "nothing happened"}, describe_root_fn=AsyncMock())
+    await machine.handle("root--browser--continue", {}, describe_root_fn=AsyncMock())
+
+    # 2nd consecutive NO_EFFECT (click e2) -> triggers stall breaker & recovery hint
+    res2 = await machine.handle("root--browser--click", {"ref": "e2"}, describe_root_fn=AsyncMock())
+    assert session.consecutive_no_effect_count() == 2
+    assert "RECOVERY:" in res2["result"]["state_change_text"]
+    assert "2 consecutive actions had NO_EFFECT" in session.recovery_directive
+
+    await machine.handle("root--browser--record-comparison", {"comparison": "still nothing"}, describe_root_fn=AsyncMock())
+    res_cont = await machine.handle("root--browser--continue", {}, describe_root_fn=AsyncMock())
+    assert "[RECOVERY]" in res_cont["result"]["observation"]
+
+    # Repeating dead (click, e2) against unchanged fp_static is blocked in RTSI state validation
+    res_blocked = await machine.handle("root--browser--click", {"ref": "e2"}, describe_root_fn=AsyncMock())
+    assert res_blocked["success"] is False
+    assert res_blocked["terminate"] is False
+    assert res_blocked["recoverable"] is True
+    assert res_blocked["result"]["error"] == "repeated_dead_action"
+
+
+@pytest.mark.asyncio
+async def test_recoverable_errors_do_not_terminate():
+    bridge = MagicMock()
+    bridge.is_connected = True
+    bridge.call = AsyncMock(side_effect=[
+        BridgeError("covered_by", "Element is covered by <div>", data={"covered_by": "div"}),
+        {"text": "[e1] dialog \"Popup\"", "page": {"url": "https://example.com", "title": "Example"}},
+    ])
+    machine = RtsiMachine(bridge=bridge, settings=BridgeSettings())
+    session = machine._sessions.begin()
+    session.state = State.DECIDE
+    session.tab_id = 1
+
+    res = await machine.handle("root--browser--click", {"ref": "e5"}, describe_root_fn=AsyncMock())
+    assert res["success"] is False
+    assert res["terminate"] is False
+    assert res["recoverable"] is True
+    assert res["result"]["recoverable"] is True
+    assert res["result"]["error"] == "covered_by"
+    assert "observation" in res["result"]
+
+    # Out-of-state error is also recoverable and non-terminating (until 3-strike)
+    session.state = State.COMPARE
+    res_oos = await machine.handle("root--browser--click", {"ref": "e5"}, describe_root_fn=AsyncMock())
+    assert res_oos["success"] is False
+    assert res_oos["terminate"] is False
+    assert res_oos["recoverable"] is True
+    assert res_oos["result"]["error"] == "not_allowed_in_state"

@@ -5,7 +5,14 @@ Tests for quince_mcp.rtsi.render:
 - render_history (first 2 + last 6 truncation)
 """
 import json
-from quince_mcp.rtsi.render import parse_snapshot_refs, render_history, render_state_change
+from quince_mcp.rtsi.render import (
+    classify_causal_outcome,
+    parse_snapshot_refs,
+    render_history,
+    render_observation,
+    render_page_state_header,
+    render_state_change,
+)
 from quince_mcp.rtsi.session import HistoryItem
 
 
@@ -105,3 +112,130 @@ def test_render_history_over_cap():
     assert res[1]["action"] == "act 1"
     assert res[2]["omitted"] == 4  # 12 - 8 = 4
     assert res[-1]["action"] == "act 11"
+
+
+def test_render_page_state_header_viewport_and_focus():
+    header_top = render_page_state_header({
+        "title": "Amazon.com: Shop",
+        "url": "https://www.amazon.com/",
+        "viewport": {
+            "scroll_pct": 0,
+            "at_top": True,
+            "at_bottom": False,
+            "screens_above": 0.0,
+            "screens_below": 4.2,
+            "can_scroll": ["down"],
+            "scrollable_containers": [{"ref": "e15", "role": "region", "name": "Filters"}],
+        },
+        "focus": {
+            "ref": "e3",
+            "role": "searchbox",
+            "value": "wireless mouse",
+            "unsubmitted": True,
+        },
+    })
+    assert "[PAGE] Amazon.com: Shop | https://www.amazon.com/" in header_top
+    assert "[VIEWPORT] 0% AT TOP | ~0.0 above | ~4.2 below | can_scroll: down | containers: [e15]" in header_top
+    assert '[FOCUS] [e3] searchbox value="wireless mouse" (UNSUBMITTED — press Enter or click submit button)' in header_top
+
+    header_bottom = render_page_state_header({
+        "title": "Results",
+        "url": "https://www.amazon.com/s?k=mouse",
+        "viewport": {
+            "scroll_pct": 100,
+            "at_top": False,
+            "at_bottom": True,
+            "screens_above": 3.5,
+            "screens_below": 0.0,
+            "can_scroll": ["up"],
+        },
+        "focus": None,
+    })
+    assert "[VIEWPORT] 100% AT BOTTOM | ~3.5 above | ~0.0 below | can_scroll: up" in header_bottom
+    assert "[FOCUS] none" in header_bottom
+
+
+def test_render_page_state_header_modal_and_observation():
+    obs = render_observation({
+        "text": '[e41] button "Accept All"\n[e42] button "Close"',
+        "observation_meta": {
+            "title": "Example",
+            "url": "https://example.com",
+            "viewport": {
+                "scroll_pct": 0,
+                "at_top": True,
+                "at_bottom": True,
+                "screens_above": 0.0,
+                "screens_below": 0.0,
+                "can_scroll": [],
+            },
+            "focus": None,
+            "modal": {"ref": "e40", "role": "dialog", "name": "Cookie Preferences"},
+        },
+    })
+    assert "[VIEWPORT] 0% AT TOP AT BOTTOM | ~0.0 above | ~0.0 below | can_scroll: none" in obs
+    assert '[MODAL] [e40] dialog "Cookie Preferences" open — dismiss with Escape or close button' in obs
+    assert '[e41] button "Accept All"' in obs
+
+
+def test_render_state_change_causal_outcomes_autocomplete_and_modal():
+    # Autocomplete listbox
+    sc_ac = {
+        "effect": "dom_changed",
+        "dom": {
+            "added": [
+                {"ref": "e30", "role": "listbox", "desc": 'listbox "Suggestions"'},
+                {"ref": "e31", "role": "option", "desc": 'option "wireless headphones"'},
+                {"ref": "e32", "role": "option", "desc": 'option "wireless charger"'},
+            ],
+            "removed": [],
+            "changed": [],
+        },
+    }
+    assert classify_causal_outcome(sc_ac) == "DOM_UPDATED"
+    rendered_ac = render_state_change(sc_ac, action_desc='type into [e3] searchbox "Search"')
+    assert "[LAST ACTION] DOM_UPDATED — Autocomplete suggestions appeared [e30..e32]" in rendered_ac
+
+    # Dialog modal
+    sc_modal = {
+        "effect": "dom_changed",
+        "modal_opened": True,
+        "modal_ref": "e50",
+        "dom": {
+            "added": [{"ref": "e50", "role": "dialog", "desc": 'dialog "Sign in"'}],
+            "removed": [],
+            "changed": [],
+        },
+    }
+    assert classify_causal_outcome(sc_modal) == "DOM_UPDATED"
+    rendered_modal = render_state_change(sc_modal, action_desc="click [e10]")
+    assert "[LAST ACTION] DOM_UPDATED — Modal/dialog opened [e50]" in rendered_modal
+
+    # VALUE_CHANGED on searchbox
+    sc_val = {
+        "effect": "value_set",
+        "target": {"ref": "e3", "role": "searchbox"},
+        "dom": {
+            "added": [],
+            "removed": [],
+            "changed": [{"ref": "e3", "desc": 'searchbox "Search"', "fields": {"value": ["", "laptop"]}}],
+        },
+    }
+    assert classify_causal_outcome(sc_val) == "VALUE_CHANGED"
+    rendered_val = render_state_change(sc_val, action_desc='type into [e3] searchbox "Search"')
+    assert "[LAST ACTION] VALUE_CHANGED — Input value updated; page did NOT navigate and form is not yet submitted." in rendered_val
+
+    # SCROLLED
+    sc_scroll = {
+        "effect": "none",
+        "scroll": {"before": 0, "after": 640, "max": 2000, "pct": 32, "at_bottom": False, "revealed_headings": ['[e25] "Specs"']},
+    }
+    assert classify_causal_outcome(sc_scroll) == "SCROLLED"
+    rendered_scroll = render_state_change(sc_scroll, action_desc="scroll down")
+    assert "[LAST ACTION] SCROLLED — Viewport at 32%" in rendered_scroll
+
+    # NO_EFFECT
+    sc_none = {"effect": "none", "no_visible_change": True}
+    assert classify_causal_outcome(sc_none) == "NO_EFFECT"
+    rendered_none = render_state_change(sc_none, action_desc="click [e9]")
+    assert "[LAST ACTION] NO_EFFECT — Action had no effect." in rendered_none

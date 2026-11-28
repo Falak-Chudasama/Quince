@@ -1,11 +1,58 @@
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import re
+import socket
 import urllib.parse
 import urllib.request
 from typing import Any
+
+
+def _validate_public_url(url: str) -> str | None:
+    """
+    Reject non-HTTP(S) schemes and loopback / private / link-local IP targets
+    to prevent SSRF against localhost services or cloud metadata endpoints.
+    Returns an error string if blocked, or None if allowed.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return "Malformed URL"
+
+    if parsed.scheme not in ("http", "https"):
+        return f"Blocked URL scheme: {parsed.scheme}"
+
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return "URL missing hostname"
+
+    if host in ("localhost", "localhost.localdomain") or host.endswith(".local"):
+        return f"Blocked loopback/local host: {host}"
+
+    # Direct IP literal check
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+            return f"Blocked non-public IP target: {host}"
+    except ValueError:
+        # Hostname: resolve DNS best-effort to block local/metadata aliases
+        try:
+            for info in socket.getaddrinfo(host, None):
+                resolved_ip = ipaddress.ip_address(info[4][0].split("%")[0])
+                if (
+                    resolved_ip.is_loopback
+                    or resolved_ip.is_private
+                    or resolved_ip.is_link_local
+                    or resolved_ip.is_reserved
+                    or resolved_ip.is_unspecified
+                ):
+                    return f"Blocked hostname resolving to non-public IP: {host} -> {resolved_ip}"
+        except Exception:
+            pass
+
+    return None
 
 
 DEFAULT_USER_AGENT = (
@@ -122,8 +169,12 @@ def _fetch_webpage(url: str, max_chars: int = 4000) -> dict[str, Any]:
     if not url:
         return {"error": "URL cannot be empty"}
 
-    if not url.startswith(("http://", "https://")):
+    if "://" not in url:
         url = "https://" + url
+
+    blocked_reason = _validate_public_url(url)
+    if blocked_reason:
+        return {"url": url, "error": blocked_reason, "blocked": True}
 
     max_chars = max(500, min(max_chars, 20000))
 
@@ -237,8 +288,12 @@ def _http_request(
     if not url:
         return {"error": "URL cannot be empty"}
 
-    if not url.startswith(("http://", "https://")):
+    if "://" not in url:
         url = "https://" + url
+
+    blocked_reason = _validate_public_url(url)
+    if blocked_reason:
+        return {"url": url, "error": blocked_reason, "blocked": True}
 
     method = method.upper().strip()
     timeout_seconds = max(1, min(timeout_seconds, 30))

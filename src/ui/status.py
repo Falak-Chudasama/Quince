@@ -186,6 +186,7 @@ class _StatusSnapshot:
 _BREATH_ANCHOR = {
     "idle": 0.0,
     "recording": 0.15,
+    "awaiting_user": 0.30,
     "thinking": 0.45,
     "speaking": 0.75,
 }
@@ -193,6 +194,7 @@ _BREATH_ANCHOR = {
 _BREATH_PERIOD_S = {
     "idle": 3.2,
     "recording": 1.1,
+    "awaiting_user": 2.0,
     "thinking": 1.6,
     "speaking": 1.3,
 }
@@ -290,6 +292,7 @@ class StatusLine:
         labels = {
             "idle": "idle",
             "recording": "listening",
+            "awaiting_user": "waiting",
             "thinking": "thinking",
             "speaking": "speaking",
         }

@@ -47,6 +47,7 @@ class RtsiSession:
     state: State = State.ENTRY
     exits_open: bool = False
     tab_id: int | None = None
+    goal: str = ""
     observation_id: int = 0
     observation_generation: int | None = None
     ref_desc: dict[str, str] = field(default_factory=dict)   # ref -> 'role "name"'
@@ -56,6 +57,14 @@ class RtsiSession:
     history: list[HistoryItem] = field(default_factory=list)
     last_state_change: dict[str, Any] | None = None
     last_action: ActionRecord | None = None
+    last_causal_outcome: str | None = None
+    last_target_role: str | None = None
+    unsubmitted_search: bool = False
+    premature_exit_rejected: bool = False
+    current_state_fingerprint: str = ""
+    action_history: list[tuple[str, str, str, str]] = field(default_factory=list)
+    blocked_dead_actions: set[tuple[str, str, str]] = field(default_factory=set)
+    recovery_directive: str = ""
     pending: PendingUser | None = None
     repeat_counter: dict[str, int] = field(default_factory=dict)  # sig -> count
     started_at: float = field(default_factory=time.time)
@@ -64,6 +73,29 @@ class RtsiSession:
 
     def touch(self) -> None:
         self.last_activity = time.time()
+
+    def record_rolling_action(
+        self,
+        tool_name: str,
+        target_ref: str,
+        causal_outcome: str,
+        state_fingerprint: str,
+        max_len: int = 20,
+    ) -> None:
+        """Record (tool_name, target_ref, causal_outcome, state_fingerprint) in rolling history."""
+        self.action_history.append((tool_name, target_ref, causal_outcome, state_fingerprint))
+        if len(self.action_history) > max_len:
+            self.action_history = self.action_history[-max_len:]
+
+    def consecutive_no_effect_count(self) -> int:
+        """Count trailing consecutive NO_EFFECT actions in rolling history."""
+        count = 0
+        for entry in reversed(self.action_history):
+            if entry[2] == "NO_EFFECT":
+                count += 1
+            else:
+                break
+        return count
 
     def is_expired(self, max_duration_s: int, idle_timeout_s: int) -> tuple[bool, str]:
         now = time.time()

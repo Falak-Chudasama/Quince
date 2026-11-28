@@ -2,13 +2,24 @@
 __pycache__/
 *.pyc
 .env
+*.env.local
+client/.env
+client/.env.local
 qwen3-tts/
 .vscode/
 quince_notes/
+.DS_Store
+Thumbs.db
+*.log
 # Bridge auto-generated token
 quince_mcp/bridge/.bridge_token
-# Extension build artifacts
+# Frontend & extension build artifacts / dependencies
+node_modules/
+client/node_modules/
+client/dist/
 extension/node_modules/
 extension/dist/
+coverage/
+*.tsbuildinfo
 # Test artifacts
 .pytest_cache/

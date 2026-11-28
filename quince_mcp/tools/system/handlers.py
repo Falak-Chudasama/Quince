@@ -1,12 +1,15 @@
 import ctypes
+import json
 import os
 import platform
 import shutil
 import socket
 import subprocess
 import time
+import urllib.request
 from ctypes import wintypes
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import psutil
@@ -168,7 +171,7 @@ def _get_battery_level():
     battery = psutil.sensors_battery()
 
     if battery is None:
-        return { "battery_available": False }
+        return {"available": False, "battery_available": False}
 
     seconds_left = battery.secsleft
 
@@ -646,8 +649,10 @@ def _take_screenshot(filename: str | None = None) -> dict[str, Any]:
     if not filename:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"screenshot_{timestamp}.png"
-    elif not filename.lower().endswith(".png"):
-        filename += ".png"
+    else:
+        filename = Path(filename).name
+        if not filename.lower().endswith(".png"):
+            filename += ".png"
 
     dest_path = pictures_dir / filename
     safe_dest = str(dest_path.resolve()).replace("'", "''")

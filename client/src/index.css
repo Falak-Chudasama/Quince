@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Host Grotesk';
+  src: url('/fonts/Host_Grotesk/HostGrotesk-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Host Grotesk';
+  src: url('/fonts/Host_Grotesk/HostGrotesk-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Unbounded';
+  src: url('/fonts/Unbounded/Unbounded-VariableFont_wght.ttf') format('truetype');
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Azeret Mono';
+  src: url('/fonts/Azeret_Mono/AzeretMono-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    font-family: 'Host Grotesk', system-ui, -apple-system, sans-serif;
+    background-color: #f8f9f5;
+    color: #1c1917;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html.dark body {
+    background-color: #121310;
+    color: #f3f4f1;
+  }
+}
+
+@layer components {
+  .glass-capsule {
+    background-color: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+  }
+
+  html.dark .glass-capsule {
+    background-color: rgba(24, 25, 21, 0.78);
+  }
+
+  .glass-panel {
+    background-color: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+  }
+
+  html.dark .glass-panel {
+    background-color: rgba(24, 25, 21, 0.88);
+  }
+
+  .surface-card {
+    background-color: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  html.dark .surface-card {
+    background-color: #181915;
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .btn-interactive {
+    transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      background-color 150ms ease,
+      border-color 150ms ease,
+      opacity 150ms ease;
+  }
+
+  .btn-interactive:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .focus-ring:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px #f8f9f5, 0 0 0 4px rgba(249, 175, 73, 0.55);
+  }
+
+  html.dark .focus-ring:focus-visible {
+    box-shadow: 0 0 0 2px #121310, 0 0 0 4px rgba(249, 175, 73, 0.65);
+  }
+}
+
+/* Precision thin scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(109, 115, 102, 0.22);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 115, 102, 0.4);
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

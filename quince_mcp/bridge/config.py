@@ -73,7 +73,7 @@ def _get_or_generate_token() -> str:
 @dataclass
 class BridgeSettings:
     enabled: bool = True
-    host: str = "127.0.0.5"
+    host: str = "127.0.0.1"
     port: int = 7100
     token: str = ""
     extension_id: str = ""  # optional pin
@@ -91,10 +91,10 @@ class BridgeSettings:
     def from_env(cls) -> "BridgeSettings":
         _load_dotenv()
 
-        host = os.environ.get("QUINCE_BRIDGE_HOST", "127.0.0.5").strip()
+        host = os.environ.get("QUINCE_BRIDGE_HOST", "127.0.0.1").strip()
         if not (host.startswith("127.") or host in ("::1", "localhost")):
             raise ValueError(
-                f"QUINCE_BRIDGE_HOST must be a loopback address (e.g. 127.0.0.5 or 127.0.0.1); "
+                f"QUINCE_BRIDGE_HOST must be a loopback address (e.g. 127.0.0.1); "
                 f"got {host!r}. Refusing to bind to a non-loopback address."
             )
 

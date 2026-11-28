@@ -52,6 +52,14 @@ def test_translate_click_type_press(machine):
     assert type_args["text"] == "Hello"
     assert type_args["clear_first"] is True
     assert type_args["press_enter"] is True
+    assert type_args["clear"] is True
+    assert type_args["submit"] is True
+
+    type_args_new = machine._translate_args("root--browser--type-text", {"ref": "e14", "text": "Search", "clear": False, "submit": True})
+    assert type_args_new["clear"] is False
+    assert type_args_new["submit"] is True
+    assert type_args_new["clear_first"] is False
+    assert type_args_new["press_enter"] is True
 
     key_args = machine._translate_args("root--browser--press-key", {"key": "Enter", "ref": "e14"})
     assert key_args == {"key": "Enter", "ref": "e14"}
@@ -60,6 +68,12 @@ def test_translate_click_type_press(machine):
 def test_translate_scroll_select_check(machine):
     scroll_args = machine._translate_args("root--browser--scroll", {"direction": "down", "ref": "e10"})
     assert scroll_args == {"direction": "down", "ref": "e10"}
+
+    scroll_semantic = machine._translate_args(
+        "root--browser--scroll",
+        {"direction": "down", "pages": 0.8, "container_ref": "e15"},
+    )
+    assert scroll_semantic == {"direction": "down", "pages": 0.8, "container_ref": "e15"}
 
     select_args = machine._translate_args("root--browser--select-option", {"ref": "e10", "option": "Option 1"})
     assert select_args == {"ref": "e10", "option": "Option 1"}

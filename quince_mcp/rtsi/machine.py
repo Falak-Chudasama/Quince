@@ -22,7 +22,13 @@ from quince_mcp.rtsi.confirm import (
     parse_yes_no,
 )
 from quince_mcp.rtsi.prompts import RTSI_MODE_PROMPT
-from quince_mcp.rtsi.render import parse_snapshot_refs, render_history, render_state_change
+from quince_mcp.rtsi.render import (
+    classify_causal_outcome,
+    parse_snapshot_refs,
+    render_history,
+    render_observation,
+    render_state_change,
+)
 from quince_mcp.rtsi.session import ActionRecord, PendingUser, RtsiSession, SessionManager
 from quince_mcp.rtsi.speech import get_speak_line
 from quince_mcp.rtsi.states import (
@@ -83,7 +89,7 @@ class RtsiMachine:
 
         # Entry into the category.
         if tool_id == "root--browser":
-            return await self._handle_entry(session, describe_root_fn)
+            return await self._handle_entry(session, describe_root_fn, arguments)
 
         # If no session is active, any other browser tool is stale.
         if session is None or session.state == State.ENDED:
@@ -131,6 +137,7 @@ class RtsiMachine:
         self,
         old_session: RtsiSession | None,
         describe_root_fn: Callable,
+        arguments: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle navigate("root--browser") — create session, connect extension."""
         # Check extension connected.
@@ -147,6 +154,10 @@ class RtsiMachine:
             await self._end_session(old_session, "superseded")
 
         session = self._sessions.begin()
+        if arguments:
+            session.goal = str(
+                arguments.get("goal") or arguments.get("task") or arguments.get("query") or ""
+            ).strip()
         logger.info("RTSI session %s started", session.id)
 
         # Signal extension.
@@ -482,10 +493,16 @@ class RtsiMachine:
                 session.exits_open = True
             return build_message(
                 message=f"Tab operation failed: {exc.bridge_message}",
-                result={"ok": False, "error": exc.code, "message": exc.bridge_message, "data": exc.data},
+                result={
+                    "ok": False,
+                    "error": exc.code,
+                    "message": exc.bridge_message,
+                    "data": exc.data,
+                    "recoverable": True,
+                },
                 children=self._build_children_for_state(session),
-                was_category_call=True, terminate=False, success=True,
-                extra={"rtsi": self._rtsi_meta(session)},
+                was_category_call=True, terminate=False, success=False,
+                extra={"rtsi": self._rtsi_meta(session), "recoverable": True},
             )
 
         # Update session tab_id.
@@ -551,14 +568,26 @@ class RtsiMachine:
 
         # refresh-page delivers a new observation.
         if tool_id == "root--browser--refresh-page":
-            text = read_result.get("text", "")
+            text = render_observation(
+                read_result,
+                unsubmitted_search=session.unsubmitted_search,
+                recovery_directive=session.recovery_directive,
+            )
             session.ref_desc = parse_snapshot_refs(text)
             session.observation_generation = read_result.get("generation")
             session.observation_id += 1
+            session.current_state_fingerprint = self._compute_fingerprint(session, snap=read_result)
             result["observation"] = text
             result["observation_id"] = session.observation_id
             extra: dict[str, Any] = {"rtsi": self._rtsi_meta(session), "replaces": "observation"}
         else:
+            if tool_id == "root--browser--find-in-page" and isinstance(read_result.get("counts"), dict):
+                c = read_result["counts"]
+                result["summary"] = (
+                    f"{c.get('in_viewport', 0)} in viewport, "
+                    f"{c.get('above_viewport', 0)} above viewport, "
+                    f"{c.get('below_viewport', 0)} below viewport"
+                )
             extra = {"rtsi": self._rtsi_meta(session)}
 
         return build_message(
@@ -580,6 +609,49 @@ class RtsiMachine:
         if session.step >= self._settings.max_steps:
             await self._end_session(session, "step_limit")
             return self._step_limit_response()
+
+        # Stall / repeat-action breaker: temporarily block repeating an identical
+        # dead (tool_name, target_ref) against an unchanged state fingerprint.
+        target_ref = str(arguments.get("ref") or arguments.get("container_ref") or "")
+        fp = session.current_state_fingerprint
+        sig = self._action_signature(tool_id, arguments, fp, session.observation_generation or 0)
+        if (tool_id, target_ref, fp) in session.blocked_dead_actions:
+            count = session.repeat_counter.get(sig, 1) + 1
+            session.repeat_counter[sig] = count
+            if count >= 5:
+                await self._end_session(session, "repeat_limit")
+                return self._repeat_limit_response()
+
+            directive = session.recovery_directive or (
+                f"Blocked repeating {tool_id.split('--')[-1]} on {target_ref or 'page'} — "
+                "it already had NO_EFFECT and the page did not change. "
+                "Try scrolling, pressing Escape to dismiss overlays, or choosing a different element."
+            )
+            session.recovery_directive = directive
+            session.state = State.DECIDE
+            session.exits_open = True
+            obs = await self._get_observation(session)
+            result: dict[str, Any] = {
+                "ok": False,
+                "error": "repeated_dead_action",
+                "recoverable": True,
+                "message": directive,
+                "observation_id": session.observation_id,
+            }
+            if obs is not None:
+                result["observation"] = obs
+            extra: dict[str, Any] = {"rtsi": self._rtsi_meta(session), "recoverable": True}
+            if obs is not None:
+                extra["replaces"] = "observation"
+            return build_message(
+                message=directive,
+                result=result,
+                children=self._build_children_for_state(session),
+                was_category_call=True,
+                terminate=False,
+                success=False,
+                extra=extra,
+            )
 
         return await self._do_act_execute(session, tool_id, arguments)
 
@@ -620,6 +692,7 @@ class RtsiMachine:
         ref = arguments.get("ref", "")
         ref_name = session.ref_desc.get(ref, ref) if ref else ""
         action_desc = self._build_action_desc(tool_id, arguments, ref_name)
+        pre_fp = session.current_state_fingerprint
 
         try:
             act_result = await self._bridge.call(method, params, timeout=timeout)
@@ -628,15 +701,17 @@ class RtsiMachine:
             if exc.code == "confirmation_required":
                 return await self._handle_confirmation_required(session, tool_id, arguments, exc)
 
-            # Error recovery: fresh observation for stale_ref / not_found.
+            recoverable = exc.code not in ("extension_not_connected", "session_expired", "session_ended")
+            # Error recovery: fresh observation for stale_ref / not_found / covered_by / not_visible.
             result: dict[str, Any] = {
                 "ok": False,
                 "error": exc.code,
+                "recoverable": recoverable,
                 "message": exc.bridge_message,
                 "hint": exc.data.get("hint", ""),
                 "data": exc.data,
             }
-            if exc.code in ("stale_ref", "not_found", "covered_by"):
+            if exc.code in ("stale_ref", "not_found", "not_visible", "covered_by", "content_script_timeout"):
                 obs = await self._get_observation(session)
                 if obs:
                     result["observation"] = obs
@@ -649,37 +724,76 @@ class RtsiMachine:
 
             session.state = State.DECIDE
             session.exits_open = True
+            extra_err: dict[str, Any] = {"rtsi": self._rtsi_meta(session), "recoverable": recoverable}
+            if "observation" in result:
+                extra_err["replaces"] = "observation"
             return build_message(
                 message=f"Action failed: {exc.bridge_message}",
                 result=result,
                 children=self._build_children_for_state(session),
-                was_category_call=True, terminate=False, success=True,
-                extra={"rtsi": self._rtsi_meta(session)},
+                was_category_call=True, terminate=False, success=False,
+                extra=extra_err,
             )
 
         session.failure_streak = 0
 
-        sc = act_result.get("state_change") or act_result  # bridge may nest under state_change
-        # Update navigation info.
-        if sc.get("navigated"):
-            obs = await self._get_observation(session)
+        sc = dict(act_result.get("state_change") or act_result)  # bridge may nest under state_change
+        causal_outcome = classify_causal_outcome(sc)
+        sc["causal_outcome"] = causal_outcome
 
-        # Repeat guard.
-        url_path = _url_path(sc.get("after", {}).get("url", ""))
-        gen = session.observation_generation or 0
-        sig = self._action_signature(tool_id, arguments, url_path, gen)
-        if sc.get("no_visible_change"):
+        target_ref = str(arguments.get("ref") or arguments.get("container_ref") or "")
+        target_role = (
+            (sc.get("target") or {}).get("role")
+            or (session.ref_desc.get(target_ref, "").split(" ")[0] if target_ref else "")
+            or (sc.get("focus") or {}).get("after_role")
+            or ""
+        )
+        session.last_causal_outcome = causal_outcome
+        session.last_target_role = target_role
+
+        # Track unsubmitted search/input edits for anti-premature-exit guard.
+        if causal_outcome == "VALUE_CHANGED" and tool_id == "root--browser--type-text":
+            session.unsubmitted_search = True
+            session.premature_exit_rejected = False
+        elif causal_outcome == "NAVIGATED":
+            session.unsubmitted_search = False
+            session.premature_exit_rejected = False
+        elif causal_outcome == "DOM_UPDATED" and not sc.get("autocomplete_appeared"):
+            session.unsubmitted_search = False
+            session.premature_exit_rejected = False
+
+        # Update observation generation from state change before computing new fingerprint.
+        new_gen = sc.get("after", {}).get("generation") or sc.get("generation")
+        if new_gen is not None:
+            session.observation_generation = new_gen
+
+        new_fp = self._compute_fingerprint(session, sc=sc)
+        session.record_rolling_action(tool_id, target_ref, causal_outcome, pre_fp)
+
+        # Stall / repeat guard.
+        sig = self._action_signature(tool_id, arguments, pre_fp, session.observation_generation or 0)
+        if causal_outcome == "NO_EFFECT" or sc.get("no_visible_change"):
             count = session.repeat_counter.get(sig, 0) + 1
             session.repeat_counter[sig] = count
+            session.blocked_dead_actions.add((tool_id, target_ref, pre_fp))
+            session.blocked_dead_actions.add((tool_id, target_ref, new_fp))
             if count >= 5:
                 await self._end_session(session, "repeat_limit")
                 return self._repeat_limit_response()
-            if count >= 3:
-                sc = dict(sc)
-                sc["loop_warning"] = (
-                    "You repeated the same action and nothing changed. "
-                    "Try a different element or approach, or stop."
+            if session.consecutive_no_effect_count() >= 2:
+                directive = (
+                    "2 consecutive actions had NO_EFFECT. Stop repeating dead interactions — "
+                    "try scrolling, pressing Escape to dismiss overlays, or choosing another element."
                 )
+                session.recovery_directive = directive
+                sc["loop_warning"] = directive
+                sc["recovery_directive"] = directive
+        else:
+            session.recovery_directive = ""
+            if new_fp != pre_fp:
+                session.blocked_dead_actions.clear()
+
+        session.current_state_fingerprint = new_fp
 
         # Record action.
         session.last_action = ActionRecord(
@@ -689,11 +803,6 @@ class RtsiMachine:
             signature=sig,
         )
         session.last_state_change = sc
-
-        # Update observation generation from state change.
-        new_gen = sc.get("after", {}).get("generation") or sc.get("generation")
-        if new_gen is not None:
-            session.observation_generation = new_gen
 
         # Policy routing.
         sc_text = self._render_sc(sc, action_desc)
@@ -722,6 +831,9 @@ class RtsiMachine:
                 was_category_call=True, terminate=False, success=True,
                 extra={"rtsi": self._rtsi_meta(session), "replaces": "observation"},
             )
+
+        if sc.get("navigated"):
+            await self._get_observation(session)
 
         # MERGE_COMPARE_JUDGE mode not fully implemented in this version;
         # always go to COMPARE -> JUDGE.
@@ -765,6 +877,50 @@ class RtsiMachine:
         is_success = tool_id == "root--browser--successful-termination"
         summary_key = "result_summary" if is_success else "reason"
         summary = str(arguments.get(summary_key, "")).strip()[:300]
+
+        # Anti-Premature-Exit Guard: reject premature successful-termination once
+        # when a search/input field was edited (VALUE_CHANGED) without submitting or seeing results.
+        if is_success and session.unsubmitted_search and not session.premature_exit_rejected:
+            goal_text = " ".join([
+                session.goal,
+                summary,
+                session.last_action.ref_desc if session.last_action else "",
+            ]).lower()
+            is_search_intent = (
+                any(kw in goal_text for kw in ("search", "find", "look up", "lookup", "check", "results", "query"))
+                or session.last_target_role == "searchbox"
+                or not session.goal
+            )
+            if is_search_intent:
+                session.premature_exit_rejected = True
+                session.state = State.DECIDE
+                session.exits_open = True
+                obs = await self._get_observation(session)
+                corrective = (
+                    "You typed into the search field but haven't submitted it or seen results yet. "
+                    "Call key('Enter') or click the submit button."
+                )
+                result: dict[str, Any] = {
+                    "ok": False,
+                    "error": "premature_exit_blocked",
+                    "recoverable": True,
+                    "message": corrective,
+                    "observation_id": session.observation_id,
+                }
+                if obs is not None:
+                    result["observation"] = obs
+                extra: dict[str, Any] = {"rtsi": self._rtsi_meta(session), "recoverable": True}
+                if obs is not None:
+                    extra["replaces"] = "observation"
+                return build_message(
+                    message=corrective,
+                    result=result,
+                    children=self._build_children_for_state(session),
+                    was_category_call=True,
+                    terminate=False,
+                    success=False,
+                    extra=extra,
+                )
 
         outcome_status = "success" if is_success else "failed"
 
@@ -917,10 +1073,15 @@ class RtsiMachine:
                 },
                 timeout=8.0,
             )
-            text = snap.get("text", "")
+            text = render_observation(
+                snap,
+                unsubmitted_search=session.unsubmitted_search,
+                recovery_directive=session.recovery_directive,
+            )
             session.ref_desc = parse_snapshot_refs(text)
             session.observation_generation = snap.get("generation")
             session.observation_id += 1
+            session.current_state_fingerprint = self._compute_fingerprint(session, snap=snap)
             return text
         except Exception as exc:
             logger.warning("Snapshot failed: %s", exc)
@@ -985,19 +1146,20 @@ class RtsiMachine:
             )
         return build_message(
             message="That option is not available right now. Pick one of the listed options.",
-            result={"error": "not_allowed_in_state", "state": session.state.value, "tool_id": tool_id},
+            result={"ok": False, "error": "not_allowed_in_state", "recoverable": True, "state": session.state.value, "tool_id": tool_id},
             children=self._build_children_for_state(session),
-            was_category_call=True, terminate=False, success=True,
-            extra={"rtsi": self._rtsi_meta(session)},
+            was_category_call=True, terminate=False, success=False,
+            extra={"rtsi": self._rtsi_meta(session), "recoverable": True},
         )
 
     def _bridge_error(self, session: RtsiSession, exc: BridgeError) -> dict[str, Any]:
+        recoverable = exc.code not in ("extension_not_connected", "session_expired", "session_ended")
         return build_message(
             message=exc.bridge_message or exc.code,
-            result={"ok": False, "error": exc.code, "message": exc.bridge_message},
+            result={"ok": False, "error": exc.code, "recoverable": recoverable, "message": exc.bridge_message},
             children=self._build_children_for_state(session),
-            was_category_call=True, terminate=False, success=True,
-            extra={"rtsi": self._rtsi_meta(session)},
+            was_category_call=True, terminate=False, success=False,
+            extra={"rtsi": self._rtsi_meta(session), "recoverable": recoverable},
         )
 
     def _no_tab_error(self, session: RtsiSession) -> dict[str, Any]:
@@ -1005,10 +1167,10 @@ class RtsiMachine:
         session.exits_open = True
         return build_message(
             message="No tab is currently controlled. Open a tab first.",
-            result={"ok": False, "error": "tab_not_controlled", "message": "Open a tab first."},
+            result={"ok": False, "error": "tab_not_controlled", "recoverable": True, "message": "Open a tab first."},
             children=self._build_children_for_state(session),
-            was_category_call=True, terminate=False, success=True,
-            extra={"rtsi": self._rtsi_meta(session)},
+            was_category_call=True, terminate=False, success=False,
+            extra={"rtsi": self._rtsi_meta(session), "recoverable": True},
         )
 
     def _render_sc(self, sc: dict[str, Any], action_desc: str) -> str:
@@ -1031,11 +1193,15 @@ class RtsiMachine:
             ct = arguments.get("click_type", "single")
             return f"{ct} click {ref_part}".strip()
         if suffix == "type-text":
-            return f"type into {ref_part}".strip()
+            submit_flag = arguments.get("submit", arguments.get("press_enter", False))
+            base = f"type into {ref_part}".strip()
+            return f"{base} (submit)" if submit_flag else base
         if suffix == "press-key":
             return f"press {arguments.get('key','')} {ref_part}".strip()
         if suffix == "scroll":
-            return f"scroll {arguments.get('direction','')} {ref_part}".strip()
+            c_ref = arguments.get("container_ref") or ref
+            c_part = f"[{c_ref}]" if c_ref else ""
+            return f"scroll {arguments.get('direction','')} {c_part}".strip()
         if suffix == "select-option":
             return f"select \"{arguments.get('option','')}\" in {ref_part}".strip()
         if suffix == "set-checked":
@@ -1084,10 +1250,14 @@ class RtsiMachine:
             if arguments.get("confirm_token"):
                 out["confirm_token"] = arguments["confirm_token"]
         elif suffix == "type-text":
+            clear_val = arguments.get("clear", arguments.get("clear_first", True))
+            submit_val = arguments.get("submit", arguments.get("press_enter", False))
             out["ref"] = arguments.get("ref", "")
             out["text"] = arguments.get("text", "")
-            out["clear_first"] = arguments.get("clear_first", True)
-            out["press_enter"] = arguments.get("press_enter", False)
+            out["clear"] = clear_val
+            out["submit"] = submit_val
+            out["clear_first"] = clear_val
+            out["press_enter"] = submit_val
             if arguments.get("confirm_token"):
                 out["confirm_token"] = arguments["confirm_token"]
         elif suffix == "press-key":
@@ -1100,6 +1270,13 @@ class RtsiMachine:
             out["direction"] = arguments.get("direction", "down")
             if arguments.get("ref"):
                 out["ref"] = arguments["ref"]
+            if arguments.get("container_ref"):
+                out["container_ref"] = arguments["container_ref"]
+            if "pages" in arguments and arguments["pages"] is not None:
+                out["pages"] = arguments["pages"]
+            for delta_key in ("delta", "delta_y", "pixels"):
+                if delta_key in arguments and arguments[delta_key] is not None:
+                    out[delta_key] = arguments[delta_key]
         elif suffix == "select-option":
             out["ref"] = arguments.get("ref", "")
             out["option"] = arguments.get("option", "")
@@ -1116,6 +1293,44 @@ class RtsiMachine:
         elif suffix == "wait":
             out["seconds"] = arguments.get("seconds", 3)
         return out
+
+    def _compute_fingerprint(
+        self,
+        session: RtsiSession,
+        sc: dict[str, Any] | None = None,
+        snap: dict[str, Any] | None = None,
+    ) -> str:
+        """Compute a deterministic state fingerprint for stall/repeat detection."""
+        if snap is not None:
+            meta = snap.get("observation_meta") or snap.get("page") or {}
+            if meta.get("state_fingerprint"):
+                return str(meta["state_fingerprint"])
+            url = meta.get("url") or ""
+            text = snap.get("text") or ""
+            if not url and not text and session.current_state_fingerprint:
+                return session.current_state_fingerprint
+            gen = snap.get("generation", session.observation_generation or 0)
+            text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+            return f"{url}|{gen}|{text_hash}"
+
+        if sc is not None:
+            if sc.get("state_fingerprint"):
+                return str(sc["state_fingerprint"])
+            after = sc.get("after") or {}
+            if after.get("state_fingerprint"):
+                return str(after["state_fingerprint"])
+            url = after.get("url") or ""
+            scroll_pos = after.get("scroll", (sc.get("scroll") or {}).get("after", ""))
+            gen = after.get("generation", session.observation_generation or 0)
+            dom = sc.get("dom") or {}
+            focus_after = (sc.get("focus") or {}).get("after", "")
+            sig_bits = (
+                f"{url}|{scroll_pos}|{gen}|{focus_after}|"
+                f"{len(dom.get('added', []))}:{len(dom.get('removed', []))}:{len(dom.get('changed', []))}"
+            )
+            return hashlib.md5(sig_bits.encode()).hexdigest()[:12]
+
+        return session.current_state_fingerprint
 
     def _action_signature(
         self,

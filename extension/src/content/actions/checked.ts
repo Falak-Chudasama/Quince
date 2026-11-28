@@ -1,5 +1,6 @@
 import { BridgeError } from '../../shared/errors.js';
 import { contentState } from '../state.js';
+import { ensureInViewport } from '../visibility.js';
 
 export function executeHover(ref: string): void {
   const el = contentState.getElement(ref);
@@ -7,7 +8,7 @@ export function executeHover(ref: string): void {
     throw new BridgeError('not_found', `Element with ref ${ref} not found`);
   }
 
-  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  ensureInViewport(el);
   const rect = el.getBoundingClientRect();
   const mouseInit: MouseEventInit = {
     bubbles: true,
@@ -28,6 +29,8 @@ export function executeSetChecked(ref: string, checked: boolean): void {
   if (!el || !(el instanceof HTMLInputElement) || (el.type !== 'checkbox' && el.type !== 'radio')) {
     throw new BridgeError('not_found', `Checkbox or radio element with ref ${ref} not found`);
   }
+
+  ensureInViewport(el);
 
   if (el.checked !== checked) {
     el.checked = checked;

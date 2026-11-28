@@ -53,11 +53,14 @@ export function getActiveRequestCount(tabId: number): number {
 
 export async function waitForNetIdle(
   tabId: number,
-  quietMs: number = 400,
-  maxMs: number = 4000
+  quietMs: number = 250,
+  maxMs: number = 1200
 ): Promise<{ settled: boolean; elapsedMs: number }> {
   const startTime = Date.now();
   let quietSince = -1;
+
+  // Give synchronous fetch/navigation initiated by an action a brief window to register
+  await new Promise((r) => setTimeout(r, 80));
 
   while (Date.now() - startTime < maxMs) {
     const active = getActiveRequestCount(tabId);

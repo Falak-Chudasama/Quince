@@ -6,7 +6,8 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "test": "node --test tests/extension.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

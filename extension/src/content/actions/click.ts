@@ -1,6 +1,6 @@
 import { BridgeError } from '../../shared/errors.js';
 import { contentState } from '../state.js';
-import { isElementVisible } from '../visibility.js';
+import { ensureInViewport, isElementVisible } from '../visibility.js';
 
 export function executeClick(ref: string, clickType: 'single' | 'double' | 'right' = 'single'): void {
   const el = contentState.getElement(ref);
@@ -11,8 +11,7 @@ export function executeClick(ref: string, clickType: 'single' | 'double' | 'righ
     throw new BridgeError('not_visible', `Element with ref ${ref} is not visible`);
   }
 
-  // Scroll into view if needed
-  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  ensureInViewport(el);
 
   const rect = el.getBoundingClientRect();
   const x = rect.left + rect.width / 2;

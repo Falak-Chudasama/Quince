@@ -57,64 +57,85 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const port = parseInt(portInput.value, 10) || 7100;
     const token = tokenInput.value.trim();
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/`);
+    const hosts = ['127.0.0.1', '127.0.0.5'];
+    let hostIdx = 0;
 
-    const timeout = setTimeout(() => {
-      ws.close();
-      statusMsg.className = 'status-msg error';
-      statusMsg.textContent = 'Connection timed out. Is Quince MCP running?';
-    }, 3000);
+    const tryHost = () => {
+      const host = hosts[hostIdx];
+      const url = `ws://${host}:${port}/`;
+      const ws = new WebSocket(url);
 
-    let handshakeCompleted = false;
+      const timeout = setTimeout(() => {
+        ws.close();
+        if (hostIdx + 1 < hosts.length) {
+          hostIdx++;
+          tryHost();
+          return;
+        }
+        statusMsg.className = 'status-msg error';
+        statusMsg.textContent = 'Connection timed out. Is Quince MCP running?';
+      }, 2500);
 
-    ws.onopen = () => {
-      ws.send(
-        JSON.stringify({
-          v: 1,
-          type: 'hello',
-          client: 'quince-extension',
-          version: '0.1.0',
-          token: token,
-          browser: 'Chrome',
-          capabilities: ['snapshot', 'actions'],
-        })
-      );
-    };
+      let handshakeCompleted = false;
 
-    ws.onmessage = (event) => {
-      clearTimeout(timeout);
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'hello_ack') {
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({
+            v: 1,
+            type: 'hello',
+            client: 'quince-extension',
+            version: '0.1.0',
+            token: token,
+            browser: 'Chrome',
+            capabilities: ['snapshot', 'actions'],
+          })
+        );
+      };
+
+      ws.onmessage = (event) => {
+        clearTimeout(timeout);
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'hello_ack') {
+            handshakeCompleted = true;
+            statusMsg.className = 'status-msg success';
+            statusMsg.textContent = `Connection successful on ${url}! Quince bridge acknowledged handshake.`;
+          } else if (msg.type === 'error' || msg.error) {
+            handshakeCompleted = true;
+            statusMsg.className = 'status-msg error';
+            statusMsg.textContent = `Bridge rejected: ${msg.error?.message || 'Authentication error'}`;
+          }
+        } catch {
           handshakeCompleted = true;
           statusMsg.className = 'status-msg success';
-          statusMsg.textContent = 'Connection successful! Quince bridge acknowledged handshake.';
-        } else if (msg.type === 'error' || msg.error) {
-          statusMsg.className = 'status-msg error';
-          statusMsg.textContent = `Bridge rejected: ${msg.error?.message || 'Authentication error'}`;
+          statusMsg.textContent = 'Connected, but received unexpected response.';
         }
-      } catch {
-        statusMsg.className = 'status-msg success';
-        statusMsg.textContent = 'Connected, but received unexpected response.';
-      }
-      ws.close();
+        ws.close();
+      };
+
+      ws.onclose = (event) => {
+        clearTimeout(timeout);
+        if (handshakeCompleted) return;
+        if (event.code !== 4401 && event.code !== 4426 && hostIdx + 1 < hosts.length) {
+          hostIdx++;
+          tryHost();
+          return;
+        }
+        statusMsg.className = 'status-msg error';
+        if (event.code === 4401) {
+          statusMsg.textContent = `Unauthorized (4401): ${event.reason || 'Token mismatch'}. Check quince_mcp/bridge/.bridge_token`;
+        } else if (event.code === 4426) {
+          statusMsg.textContent = `Version upgrade required (4426): ${event.reason}`;
+        } else {
+          statusMsg.textContent = `Could not connect to ${url} (code ${event.code}: ${event.reason || 'Server not reachable'}).`;
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose will handle fallback or error reporting
+      };
     };
 
-    ws.onclose = (event) => {
-      clearTimeout(timeout);
-      if (handshakeCompleted) return;
-      statusMsg.className = 'status-msg error';
-      if (event.code === 4401) {
-        statusMsg.textContent = `Unauthorized (4401): ${event.reason || 'Token mismatch'}. Check quince_mcp/bridge/.bridge_token`;
-      } else if (event.code === 4426) {
-        statusMsg.textContent = `Version upgrade required (4426): ${event.reason}`;
-      } else {
-        statusMsg.textContent = `Could not connect to ws://127.0.0.1:${port}/ (code ${event.code}: ${event.reason || 'Server not reachable'}).`;
-      }
-    };
-
-    ws.onerror = () => {
-      // onclose will provide specific code and reason
-    };
+    tryHost();
   };
 });

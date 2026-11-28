@@ -50,9 +50,233 @@ def parse_snapshot_refs(snapshot_text: str) -> dict[str, str]:
 # State change renderer
 # ---------------------------------------------------------------------------
 
+CAUSAL_OUTCOMES = ("NAVIGATED", "DOM_UPDATED", "VALUE_CHANGED", "SCROLLED", "NO_EFFECT")
+
+
 def _trunc(s: str, n: int) -> str:
     s = str(s)
     return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def classify_causal_outcome(sc: dict[str, Any]) -> str:
+    """
+    Classify a state_change dict into one of the 5 causal outcomes:
+    NAVIGATED | DOM_UPDATED | VALUE_CHANGED | SCROLLED | NO_EFFECT.
+    """
+    explicit = sc.get("causal_outcome")
+    if explicit in CAUSAL_OUTCOMES:
+        return str(explicit)
+
+    effect = sc.get("effect", "none")
+    if sc.get("navigated") or effect == "navigated":
+        return "NAVIGATED"
+
+    dom = sc.get("dom", {})
+    added = dom.get("added", [])
+    removed = dom.get("removed", [])
+    changed = dom.get("changed", [])
+
+    has_structural_change = (
+        bool(added)
+        or bool(removed)
+        or bool(sc.get("modal_opened"))
+        or bool(sc.get("autocomplete_appeared"))
+        or any(
+            any(k not in ("value", "checked") for k in (c.get("fields") or {}).keys())
+            for c in changed
+        )
+    )
+    if has_structural_change or effect == "dom_changed":
+        return "DOM_UPDATED"
+
+    has_value_change = any(
+        "value" in (c.get("fields") or {}) or "checked" in (c.get("fields") or {})
+        for c in changed
+    )
+    if has_value_change or effect == "value_set":
+        return "VALUE_CHANGED"
+
+    scroll = sc.get("scroll", {})
+    if (
+        scroll
+        and scroll.get("before") is not None
+        and scroll.get("after") is not None
+        and abs(scroll["after"] - scroll["before"]) > 2
+    ):
+        return "SCROLLED"
+
+    return "NO_EFFECT"
+
+
+def render_page_state_header(
+    meta: dict[str, Any],
+    *,
+    unsubmitted_search: bool = False,
+) -> str:
+    """
+    Render the compact deterministic Page State Header (~50-70 tokens):
+      [PAGE] ...
+      [VIEWPORT] ...
+      [FOCUS] ...
+      [MODAL] ... (when open)
+    """
+    lines: list[str] = []
+    title = _trunc(meta.get("title") or "(untitled)", 50)
+    url = _trunc(meta.get("url") or "", 80)
+    if title or url:
+        lines.append(f"[PAGE] {title} | {url}")
+
+    vp = meta.get("viewport")
+    if isinstance(vp, dict):
+        pct = vp.get("scroll_pct", 0)
+        flags: list[str] = []
+        if vp.get("at_top"):
+            flags.append("AT TOP")
+        if vp.get("at_bottom"):
+            flags.append("AT BOTTOM")
+        flag_str = (" " + " ".join(flags)) if flags else ""
+        above = float(vp.get("screens_above", 0.0))
+        below = float(vp.get("screens_below", 0.0))
+        can_scroll_list = vp.get("can_scroll") or []
+        can_scroll_str = ",".join(can_scroll_list) if can_scroll_list else "none"
+        containers = vp.get("scrollable_containers") or []
+        container_str = (
+            " | containers: " + ",".join(f"[{c.get('ref', '?')}]" for c in containers[:3])
+            if containers
+            else ""
+        )
+        lines.append(
+            f"[VIEWPORT] {pct}%{flag_str} | ~{above:.1f} above | ~{below:.1f} below | can_scroll: {can_scroll_str}{container_str}"
+        )
+
+    focus = meta.get("focus")
+    if isinstance(focus, dict) and focus.get("ref"):
+        f_ref = focus["ref"]
+        f_role = focus.get("role", "element")
+        f_val = focus.get("value", "")
+        val_part = f' value="{_trunc(f_val, 30)}"' if f_val else ""
+        is_unsub = bool(focus.get("unsubmitted")) or (
+            unsubmitted_search and f_role in ("searchbox", "textbox", "combobox") and bool(f_val)
+        )
+        unsub_part = " (UNSUBMITTED — press Enter or click submit button)" if is_unsub else ""
+        lines.append(f"[FOCUS] [{f_ref}] {f_role}{val_part}{unsub_part}")
+    elif isinstance(vp, dict) or focus is not None:
+        lines.append("[FOCUS] none")
+
+    modal = meta.get("modal")
+    if isinstance(modal, dict) and modal.get("ref"):
+        m_ref = modal["ref"]
+        m_role = modal.get("role", "dialog")
+        m_name = modal.get("name", "")
+        m_name_part = f' "{_trunc(m_name, 40)}"' if m_name else ""
+        lines.append(
+            f"[MODAL] [{m_ref}] {m_role}{m_name_part} open — dismiss with Escape or close button"
+        )
+
+    return "\n".join(lines)
+
+
+def render_observation(
+    snap: dict[str, Any],
+    *,
+    unsubmitted_search: bool = False,
+    recovery_directive: str = "",
+) -> str:
+    """
+    Ensure snapshot observation has the deterministic Page State Header and any
+    active recovery directive or unsubmitted-search hint.
+    """
+    text = snap.get("text", "")
+    meta = snap.get("observation_meta") or snap.get("page") or {}
+
+    parts: list[str] = []
+    if recovery_directive:
+        parts.append(f"[RECOVERY] {recovery_directive}")
+
+    if not text.lstrip().startswith("[PAGE]") and (meta.get("viewport") or meta.get("url")):
+        header = render_page_state_header(meta, unsubmitted_search=unsubmitted_search)
+        if header:
+            parts.append(header)
+
+    if text:
+        parts.append(text)
+
+    rendered = "\n".join(parts)
+    if unsubmitted_search and "(UNSUBMITTED" not in rendered:
+        rendered = (
+            "[HINT] Search/text input has an UNSUBMITTED value — press Enter or click submit button.\n"
+            + rendered
+        )
+    return rendered
+
+
+def _format_ref_range(items: list[dict[str, Any]]) -> str:
+    refs = [str(el.get("ref", "")) for el in items if el.get("ref")]
+    if not refs:
+        return ""
+    if len(refs) == 1:
+        return refs[0]
+    if len(refs) == 2:
+        return ", ".join(refs)
+    return f"{refs[0]}..{refs[-1]}"
+
+
+def _render_last_action_line(sc: dict[str, Any], outcome: str, action_desc: str) -> str:
+    after_url = sc.get("after", {}).get("url", "")
+    after_title = sc.get("after", {}).get("title", "")
+    dom = sc.get("dom", {})
+    added = dom.get("added", [])
+
+    if outcome == "NAVIGATED":
+        dest = _trunc(after_title or after_url, 60)
+        return f"[LAST ACTION] NAVIGATED — Page changed to {dest}; fresh top-of-page snapshot below."
+
+    if outcome == "DOM_UPDATED":
+        is_autocomplete = bool(sc.get("autocomplete_appeared")) or any(
+            el.get("role") in ("listbox", "option")
+            or str(el.get("desc", "")).startswith(("listbox", "option"))
+            for el in added
+        )
+        if is_autocomplete:
+            rr = _format_ref_range(added)
+            ref_hint = f" [{rr}]" if rr else ""
+            return f"[LAST ACTION] DOM_UPDATED — Autocomplete suggestions appeared{ref_hint} — click a suggestion or press Enter."
+
+        is_modal = bool(sc.get("modal_opened")) or any(
+            el.get("role") == "dialog" or str(el.get("desc", "")).startswith("dialog")
+            for el in added
+        )
+        if is_modal:
+            mref = sc.get("modal_ref") or next(
+                (el.get("ref") for el in added if el.get("role") == "dialog" or str(el.get("desc", "")).startswith("dialog")),
+                "",
+            )
+            mref_str = f" [{mref}]" if mref else ""
+            return f"[LAST ACTION] DOM_UPDATED — Modal/dialog opened{mref_str} — interact with it or dismiss with Escape."
+
+        rr = _format_ref_range(added)
+        if rr:
+            return f"[LAST ACTION] DOM_UPDATED — New elements appeared [{rr}]."
+        return "[LAST ACTION] DOM_UPDATED — Page structure updated."
+
+    if outcome == "VALUE_CHANGED":
+        target_role = (sc.get("target") or {}).get("role", "") or (sc.get("focus") or {}).get("after_role", "")
+        is_text = target_role in ("searchbox", "textbox", "combobox") or "type " in action_desc.lower()
+        if is_text:
+            return "[LAST ACTION] VALUE_CHANGED — Input value updated; page did NOT navigate and form is not yet submitted."
+        return "[LAST ACTION] VALUE_CHANGED — Input/toggle value updated."
+
+    if outcome == "SCROLLED":
+        scroll = sc.get("scroll", {})
+        pct = scroll.get("pct")
+        at_bot = scroll.get("at_bottom")
+        revealed = scroll.get("revealed_headings") or []
+        pos_str = f"{pct}%" if pct is not None else f"{scroll.get('before', 0)}→{scroll.get('after', 0)}"
+        bot_str = " (AT BOTTOM)" if at_bot else ""
+        rev_str = f" | revealed: {', '.join(revealed[:2])}" if revealed else ""
+        return f"[LAST ACTION] SCROLLED — Viewport at {pos_str}{bot_str}{rev_str}."
+
+    return "[LAST ACTION] NO_EFFECT — Action had no effect. Element may be obscured, disabled, or require Enter, Escape, or scrolling."
 
 
 def render_state_change(
@@ -78,6 +302,7 @@ def render_state_change(
         lines.append(f"CHANGE after {action_desc}:")
 
     effect = sc.get("effect", "none")
+    outcome = classify_causal_outcome(sc)
     wait_info = sc.get("wait", {})
     settled = wait_info.get("settled", True)
     reason = wait_info.get("reason", "")
@@ -86,6 +311,7 @@ def render_state_change(
 
     settle_str = "timed out" if timed_out else f"{reason}, {elapsed} ms"
     lines.append(f"RESULT: {effect} | {'settled' if settled else 'unsettled'} ({settle_str})")
+    lines.append(_render_last_action_line(sc, outcome, action_desc))
 
     before_url = sc.get("before", {}).get("url", "")
     after_url = sc.get("after", {}).get("url", "")
@@ -207,6 +433,8 @@ def render_state_change(
         lines.append("NOTE: wait timed out — page may still be loading.")
     if sc.get("loop_warning"):
         lines.append(f"NOTE: {sc['loop_warning']}")
+    if sc.get("recovery_directive"):
+        lines.append(f"RECOVERY: {sc['recovery_directive']}")
 
     text = "\n".join(lines)
     # Cap at ~900 chars

@@ -1,11 +1,14 @@
 import { BridgeError } from '../../shared/errors.js';
 import { contentState } from '../state.js';
+import { ensureInViewport } from '../visibility.js';
 
 export function executeSelectOption(ref: string, optionTextOrValue: string): void {
   const el = contentState.getElement(ref);
   if (!el || !(el instanceof HTMLSelectElement)) {
     throw new BridgeError('not_found', `Select element with ref ${ref} not found`);
   }
+
+  ensureInViewport(el);
 
   const query = optionTextOrValue.trim().toLowerCase();
   let found = false;

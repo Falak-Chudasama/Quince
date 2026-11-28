@@ -31,7 +31,8 @@ While RTSI is active:
 * **Max Tokens**: Small (e.g., 256 tokens; comparisons are $\le 280$ chars).
 * **Argument Schemas**: Provided dynamically in each response's `children[*].arguments`.
   * `refs` and `values` are string arrays.
-  * `clear_first`, `press_enter`, `checked`, `active` are booleans.
+  * `clear`, `submit` (and legacy aliases `clear_first`, `press_enter`), `checked`, `active` are booleans.
+  * `pages` is a float (default `0.8` viewport heights) and `container_ref` is an optional scrollable container ref for `scroll`.
 
 ---
 
@@ -103,6 +104,24 @@ When the LLM calls `root--browser--successful-termination` or `root--browser--un
 | `extension_not_connected` | Extension WebSocket disconnected | Apologize and prompt user to connect extension |
 | `session_expired` | Idle / duration limit reached | End loop and inform user |
 | `session_ended` | Session ended unexpectedly | Re-enter via `root--browser` if needed |
-| `stale_ref` | Element changed or refreshed | Fresh observation provided; LLM retries |
-| `sensitive_field` | Attempted write into password/credit card | Warn LLM to not touch sensitive fields |
-| `not_allowed_in_state` | Out-of-state tool call | Pick tool from valid `children` list |
+| `stale_ref` | Element changed or refreshed | Fresh observation provided; LLM retries (`recoverable: true`) |
+| `sensitive_field` | Attempted write into password/credit card | Warn LLM to not touch sensitive fields (`recoverable: true`) |
+| `not_allowed_in_state` | Out-of-state tool call | Pick tool from valid `children` list (`recoverable: true`) |
+| `premature_exit_blocked` | Premature `successful-termination` before search submit/results | Corrective observation returned; LLM submits or verifies (`recoverable: true`) |
+| `repeated_dead_action` | Identical dead `(tool, ref)` repeated against unchanged state | Blocked until state changes; recovery hint provided (`recoverable: true`) |
+
+---
+
+## 9. Additive Telemetry & Recoverability Fields
+
+The following strictly additive fields may appear alongside existing RTSI metadata (`mode_prompt`, `await_user`, `speak`, `replaces`, `max_hops`, `terminate`):
+
+* **`recoverable: boolean`** (top-level and in `result`): Present on recoverable tool/validation failures where `success: false` and `terminate: false`. Basket's loop should keep running and allow the LLM to retry or replan rather than aborting.
+* **Observation Page State Header**: Observations begin with compact deterministic telemetry lines:
+  * `[PAGE]` title and URL
+  * `[VIEWPORT]` scroll %, `AT TOP` / `AT BOTTOM`, `~above` / `~below` screens, `can_scroll`, and inner scrollable `containers`
+  * `[FOCUS]` focused ref/role/value (with `(UNSUBMITTED — press Enter or click submit button)` when an unsubmitted search/text edit is active)
+  * `[MODAL]` open dialog ref/role/name with Escape dismissal hint (modal refs are hoisted first)
+* **`observation_meta`** (in `page.snapshot` results): Includes structured `viewport`, `focus`, `modal`, and `state_fingerprint`.
+* **`[LAST ACTION]` & `causal_outcome`**: Every action `state_change` classifies the result into one of `NAVIGATED`, `DOM_UPDATED`, `VALUE_CHANGED`, `SCROLLED`, or `NO_EFFECT` and renders a `[LAST ACTION]` summary line in `state_change_text`.
+* **`counts`** (in `page.find` results): `{total, in_viewport, above_viewport, below_viewport}` plus per-match `position` (`"in_viewport" | "above" | "below"`).

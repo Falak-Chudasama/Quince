@@ -220,7 +220,7 @@ type_text = QuinceTool(
     description=(
         "TYPE TEXT INTO ONE TEXT FIELD. "
         "Use for text boxes, search boxes, text areas, and editable regions, by ref. "
-        "Set press_enter true only when the user wants the text submitted right now (like running a search). "
+        "Set submit=True when typing into a search bar or single-field input to immediately submit. "
         "Never use for passwords, card numbers, or codes; ask the user instead. "
         "Do not use to click buttons."
     ),
@@ -235,13 +235,13 @@ type_text = QuinceTool(
             "description": "ONLY the exact text to type. No quotation marks, no explanation.",
             "maxLength": 2000,
         },
-        "clear_first": {
+        "clear": {
             "type": "boolean",
-            "description": "true to replace what is already in the field (default true for search boxes and short fields); false to add to the end.",
+            "description": "true to replace what is already in the field (default true); false to append to the end.",
         },
-        "press_enter": {
+        "submit": {
             "type": "boolean",
-            "description": "true only if the text must be submitted immediately after typing.",
+            "description": "Set submit=True when typing into a search bar or single-field input to immediately submit (default false).",
         },
     },
     required_arguments=["ref", "text"],
@@ -250,20 +250,21 @@ type_text = QuinceTool(
 press_key = QuinceTool(
     tool_id=f"{_B}--press-key",
     description=(
-        "PRESS ONE KEYBOARD KEY IN THE PAGE. "
-        "Use for Enter, Tab, Escape, arrow keys, and similar single keys when clicking is not the "
-        "right tool (for example Escape to close a popup, arrows to move in a list). "
+        "PRESS ONE KEYBOARD KEY OR SHORTCUT IN THE PAGE. "
+        "Use Enter to submit a form or search, Escape to dismiss popups/autocomplete/modals, "
+        "Tab/Shift+Tab to move focus, ArrowDown/ArrowUp to navigate lists/menus, "
+        "Backspace to delete, or Control+a to select all. "
         "Do not use to type words; use type-text."
     ),
     feedback="Key pressed.",
     arguments={
         "key": {
             "type": "string",
-            "description": "One key from the allowed list.",
+            "description": "Key from the allowed list (e.g. Enter to submit, Escape to dismiss modals/popups).",
             "enum": [
                 "Enter", "Tab", "Shift+Tab", "Escape", "Backspace", "Delete",
                 "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
-                "PageUp", "PageDown", "Home", "End",
+                "PageUp", "PageDown", "Home", "End", "Control+a",
             ],
         },
         "ref": {
@@ -277,9 +278,11 @@ press_key = QuinceTool(
 scroll = QuinceTool(
     tool_id=f"{_B}--scroll",
     description=(
-        "SCROLL THE CURRENT PAGE OR A SCROLLABLE AREA. "
-        "down/up = about one screen; top/bottom = jump; to_element = bring the element at ref into view. "
-        "Use when needed elements are off screen."
+        "SCROLL THE CURRENT PAGE OR A SCROLLABLE CONTAINER. "
+        "Check [VIEWPORT] first (AT TOP / AT BOTTOM, screens above/below, containers). "
+        "down/up scrolls 0.8 screens (80% viewport height) by default so content is not skipped; "
+        "top/bottom jumps to the ends; to_element brings ref into view. "
+        "Pass container_ref to scroll inside a scrollable modal, sidebar, or inner pane."
     ),
     feedback="Scrolled.",
     arguments={
@@ -288,9 +291,19 @@ scroll = QuinceTool(
             "description": "down, up, top, bottom, or to_element.",
             "enum": ["down", "up", "top", "bottom", "to_element"],
         },
+        "pages": {
+            "type": "number",
+            "description": "Number/fraction of screens to scroll (default 0.8 = 80% viewport height for overlap).",
+            "minimum": 0.1,
+            "maximum": 5.0,
+        },
+        "container_ref": {
+            "type": "string",
+            "description": "Optional ref of a scrollable modal, sidebar, or inner container from [VIEWPORT].",
+        },
         "ref": {
             "type": "string",
-            "description": "Needed only for to_element, or to scroll inside a specific scrollable area.",
+            "description": "Needed only when direction is to_element.",
         },
     },
     required_arguments=["direction"],

@@ -1,3 +1,23 @@
+export const INTERACTIVE_ROLES = new Set([
+  'button',
+  'link',
+  'textbox',
+  'combobox',
+  'checkbox',
+  'radio',
+  'heading',
+  'searchbox',
+  'slider',
+  'spinbutton',
+  'dialog',
+  'alert',
+  'listbox',
+  'option',
+  'menuitem',
+  'tab',
+  'switch',
+]);
+
 export function getElementRole(el: Element): string {
   const explicit = el.getAttribute('role');
   if (explicit && explicit.trim()) {

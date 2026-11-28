@@ -3,6 +3,7 @@ import asyncio
 import json
 import queue
 import threading
+from typing import Any
 import websockets
 from rich.markup import escape
 
@@ -67,6 +68,8 @@ class QuinceClient:
         self._pipeline_busy = threading.Event()
         self._playback_active = threading.Event()
         self._playback_interrupted = threading.Event()
+        self._awaiting_user = threading.Event()
+        self._awaiting_user_info: dict[str, Any] | None = None
         self._shutdown = asyncio.Event()
 
         # Bumped every time a turn starts. A "cancelled" or
@@ -94,6 +97,10 @@ class QuinceClient:
             on_llm_token=self._on_llm_token,
             on_llm_final=self._on_llm_final,
             on_stt_final=self._on_stt_final,
+            on_rtsi_speak=self._on_rtsi_speak,
+            on_await_user=self._on_await_user,
+            on_tts_started=self._on_tts_started,
+            on_tts_completed=self._on_tts_completed,
         )
 
         self.status.add_listener(lambda snap: self._notify_status(snap.turn, snap.connection))
@@ -180,6 +187,8 @@ class QuinceClient:
             return
 
         self._recording.clear()
+        self._awaiting_user.clear()
+        self._awaiting_user_info = None
         self.microphone.disable()
 
         try:
@@ -193,23 +202,35 @@ class QuinceClient:
 
     async def _interrupt_and_start_recording(self) -> None:
         if self._pipeline_busy.is_set():
-            logger.info("Interrupting current Quince turn to start a new one.")
-            self._playback_interrupted.set()
-            self.player.interrupt()
-            self._pending_cancel_token = self._turn_token
+            if self._awaiting_user.is_set():
+                # User is responding to rtsi.await_user: stop local TTS playback if active
+                # and start recording a voice reply (start/stop) WITHOUT cancelling the turn.
+                logger.info("Starting voice reply for rtsi.await_user (no cancel sent).")
+                if self._playback_active.is_set():
+                    self._playback_interrupted.set()
+                    self.player.interrupt()
+                    self._playback_active.clear()
+                self._recording.clear()
+                self._pipeline_busy.clear()
+                self.microphone.disable()
+            else:
+                logger.info("Interrupting current Quince turn to start a new one.")
+                self._playback_interrupted.set()
+                self.player.interrupt()
+                self._pending_cancel_token = self._turn_token
 
-            try:
-                await self.connection.send(json.dumps(build_cancel_message()))
-            except ConnectionLostError:
-                logger.debug("Could not send cancel (already disconnected).")
+                try:
+                    await self.connection.send(json.dumps(build_cancel_message()))
+                except ConnectionLostError:
+                    logger.debug("Could not send cancel (already disconnected).")
 
-            # Mirror _on_turn_finished's cleanup immediately instead of
-            # waiting for the server's "cancelled" event, so the guard
-            # at the top of _start_recording doesn't block the new turn.
-            self._recording.clear()
-            self._pipeline_busy.clear()
-            self._playback_active.clear()
-            self.microphone.disable()
+                # Mirror _on_turn_finished's cleanup immediately instead of
+                # waiting for the server's "cancelled" event, so the guard
+                # at the top of _start_recording doesn't block the new turn.
+                self._recording.clear()
+                self._pipeline_busy.clear()
+                self._playback_active.clear()
+                self.microphone.disable()
 
         await self._start_recording()
 
@@ -217,8 +238,35 @@ class QuinceClient:
         self._recording.clear()
         self._pipeline_busy.clear()
         self._playback_active.clear()
+        self._awaiting_user.clear()
+        self._awaiting_user_info = None
         self.microphone.disable()
         self.status.set(turn="idle")
+
+    def _on_rtsi_speak(self, text: str) -> None:
+        if self.on_llm_final_cb is not None:
+            self.on_llm_final_cb(text)
+
+    def _on_await_user(self, payload: dict[str, Any]) -> None:
+        self._awaiting_user.set()
+        self._awaiting_user_info = payload
+        if not self._playback_active.is_set() and not self._recording.is_set():
+            self.status.set(turn="awaiting_user")
+
+    def _on_tts_started(self, _data: Any) -> None:
+        if not self._recording.is_set():
+            self._playback_interrupted.clear()
+            self.player.resume()
+
+    def _on_tts_completed(self) -> None:
+        self._playback_active.clear()
+        if self._recording.is_set():
+            return
+        if self._awaiting_user.is_set():
+            self.status.set(turn="awaiting_user")
+        elif self._pipeline_busy.is_set():
+            # Keep turn active across multiple TTS bursts until pipeline.completed
+            self.status.set(turn="thinking")
 
     def _on_cancelled(self) -> None:
         # A "cancelled" ack can arrive after the user has already
@@ -271,18 +319,29 @@ class QuinceClient:
             self.on_user_message_cb(text, "text")
 
         if self._pipeline_busy.is_set():
-            logger.info("Interrupting active turn to send text prompt.")
-            self._playback_interrupted.set()
-            self.player.interrupt()
-            self._pending_cancel_token = self._turn_token
-            try:
-                await self.connection.send(json.dumps(build_cancel_message()))
-            except ConnectionLostError:
-                pass
-            self._recording.clear()
-            self._pipeline_busy.clear()
-            self._playback_active.clear()
-            self.microphone.disable()
+            if self._awaiting_user.is_set():
+                self._awaiting_user.clear()
+                self._awaiting_user_info = None
+                if self._playback_active.is_set():
+                    self._playback_interrupted.set()
+                    self.player.interrupt()
+                    self._playback_active.clear()
+                self._recording.clear()
+                self._pipeline_busy.clear()
+                self.microphone.disable()
+            else:
+                logger.info("Interrupting active turn to send text prompt.")
+                self._playback_interrupted.set()
+                self.player.interrupt()
+                self._pending_cancel_token = self._turn_token
+                try:
+                    await self.connection.send(json.dumps(build_cancel_message()))
+                except ConnectionLostError:
+                    pass
+                self._recording.clear()
+                self._pipeline_busy.clear()
+                self._playback_active.clear()
+                self.microphone.disable()
 
         self._turn_token += 1
         turn_token = self._turn_token
@@ -441,6 +500,8 @@ class QuinceClient:
             self._recording.clear()
             self._pipeline_busy.clear()
             self._playback_active.clear()
+            self._awaiting_user.clear()
+            self._awaiting_user_info = None
             self.microphone.disable()
             self.status.set(turn="idle")
 

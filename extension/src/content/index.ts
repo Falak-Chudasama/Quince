@@ -99,23 +99,52 @@ async function handleMethodCall(method: string, params: any): Promise<any> {
     return readText(params.ref, params.max_chars);
   }
 
+  if (method === 'act.finish_diff') {
+    const pre = contentState.pendingPre || captureState();
+    const actionMeta = contentState.pendingActionMeta || undefined;
+    contentState.pendingPre = null;
+    contentState.pendingActionMeta = null;
+
+    const waitInfo = await waitForDomQuiet(200, 600);
+    const post = captureState();
+    const stateChange = computeStateChange(pre, post, waitInfo, actionMeta || undefined);
+    if (lastScriptDialog) {
+      stateChange.dialog = { script_dialog: lastScriptDialog };
+      lastScriptDialog = null;
+    }
+    return { state_change: stateChange };
+  }
+
   // Pre-action capture
   const pre = captureState();
+  const targetEl = params.ref ? contentState.getElement(params.ref) : null;
+  const targetRole = targetEl ? getElementRole(targetEl) : undefined;
+  let containerScrolled = false;
 
   // Execute action
   switch (method) {
     case 'act.click':
       executeClick(params.ref, params.click_type);
       break;
-    case 'act.type':
-      executeType(params.ref, params.text, params.clear_first, params.press_enter);
+    case 'act.type': {
+      const clear = params.clear ?? params.clear_first ?? true;
+      const submit = params.submit ?? params.press_enter ?? false;
+      await executeType(params.ref, params.text, clear, submit);
       break;
+    }
     case 'act.press_key':
-      executePressKey(params.key, params.ref);
+      await executePressKey(params.key, params.ref);
       break;
-    case 'act.scroll':
-      executeScroll(params.direction, params.ref);
+    case 'act.scroll': {
+      const containerRef = params.container_ref || (params.direction !== 'to_element' ? params.ref : undefined);
+      const containerEl = containerRef ? contentState.getElement(containerRef) : null;
+      const beforeContainerTop = containerEl ? containerEl.scrollTop : 0;
+      executeScroll(params);
+      if (containerEl && Math.abs(containerEl.scrollTop - beforeContainerTop) > 2) {
+        containerScrolled = true;
+      }
       break;
+    }
     case 'act.select':
       executeSelectOption(params.ref, params.option);
       break;
@@ -126,7 +155,7 @@ async function handleMethodCall(method: string, params: any): Promise<any> {
       executeHover(params.ref);
       break;
     case 'act.fill_form':
-      executeFillForm(params.refs, params.values);
+      await executeFillForm(params.refs, params.values);
       break;
     case 'act.wait':
       await new Promise((r) => setTimeout(r, (params.seconds || 3) * 1000));
@@ -138,13 +167,28 @@ async function handleMethodCall(method: string, params: any): Promise<any> {
       throw new Error(`Unknown action: ${method}`);
   }
 
+  const actionMeta = {
+    method,
+    ref: params.ref,
+    targetRole,
+    containerScrolled,
+    startTime: Date.now(),
+  };
+
+  if (params.defer_capture) {
+    contentState.pendingPre = pre;
+    contentState.pendingActionMeta = actionMeta;
+    await waitForDomQuiet(100, 350);
+    return { deferred: true, pre_url: pre.url, pre_title: pre.title };
+  }
+
   // Post-action wait
   const quietMs = ['act.scroll', 'act.hover', 'act.press_key'].includes(method) ? 150 : 300;
-  const waitInfo = await waitForDomQuiet(quietMs, 4000);
+  const waitInfo = await waitForDomQuiet(quietMs, 1500);
 
   // Post-action capture
   const post = captureState();
-  const stateChange = computeStateChange(pre, post, waitInfo);
+  const stateChange = computeStateChange(pre, post, waitInfo, actionMeta);
 
   if (lastScriptDialog) {
     stateChange.dialog = { script_dialog: lastScriptDialog };

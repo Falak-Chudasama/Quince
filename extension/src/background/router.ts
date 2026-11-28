@@ -93,6 +93,72 @@ async function executeContentRead(tabId: number, method: string, params: any): P
   return await forwardToContent(tabId, method, params);
 }
 
+async function waitForTabComplete(tabId: number, maxMs: number = 3000): Promise<void> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === 'complete') return;
+  } catch {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const listener = (tid: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      if (tid === tabId && changeInfo.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        clearTimeout(timer);
+        resolve();
+      }
+    };
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, maxMs);
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+function isMutatingSettleAction(method: string, params: any): boolean {
+  if (method === 'act.click' || method === 'act.select') return true;
+  if (method === 'act.type' && Boolean(params.submit ?? params.press_enter)) return true;
+  if (method === 'act.press_key' && String(params.key || '').toLowerCase() === 'enter') return true;
+  return false;
+}
+
+async function buildNavigationStateChange(
+  tabId: number,
+  preUrl: string,
+  preTitle: string,
+  elapsedMs: number
+): Promise<any> {
+  await waitForTabComplete(tabId, 3000);
+  await waitForNetIdle(tabId, 250, 1000);
+  try {
+    await ensureInjected(tabId);
+  } catch {}
+  const newTab = await chrome.tabs.get(tabId).catch(() => null);
+  const afterUrl = newTab?.url || preUrl;
+  const afterTitle = newTab?.title || '';
+  const navigated = afterUrl !== preUrl;
+
+  return {
+    state_change: {
+      effect: navigated ? 'navigated' : 'dom_changed',
+      causal_outcome: navigated ? 'NAVIGATED' : 'DOM_UPDATED',
+      summary_line: navigated
+        ? `OUTCOME: NAVIGATED | Navigated to ${afterTitle || afterUrl}`
+        : 'OUTCOME: DOM_UPDATED | Page reloaded',
+      before: { url: preUrl, title: preTitle },
+      after: { url: afterUrl, title: afterTitle },
+      navigated,
+      navigation_kind: 'full',
+      dom: { added: [], removed: [], changed: [] },
+      messages: [],
+      no_visible_change: false,
+      wait: { settled: true, reason: 'navigation_complete', elapsed_ms: elapsedMs },
+    },
+  };
+}
+
 async function executeAction(tabId: number, method: string, params: any): Promise<any> {
   const s = await getSessionState();
   if (s.paused) {
@@ -134,11 +200,39 @@ async function executeAction(tabId: number, method: string, params: any): Promis
     }
   }
 
-  // Pre-wait/execute action in content script
-  const res = await forwardToContent(tabId, method, params);
+  const preTab = await chrome.tabs.get(tabId).catch(() => null);
+  const preUrl = preTab?.url || '';
+  const preTitle = preTab?.title || '';
+  const shouldSettle = isMutatingSettleAction(method, params);
+  const startTime = Date.now();
 
-  // Optional background net idle settle
-  await waitForNetIdle(tabId, 250, 2000);
+  let res: any;
+  try {
+    res = await forwardToContent(tabId, method, shouldSettle ? { ...params, defer_capture: true } : params);
+  } catch (err: any) {
+    // If action triggered immediate full-page unload before response returned, recover gracefully
+    if (shouldSettle && (err?.code === 'content_script_error' || err?.code === 'content_script_timeout')) {
+      return await buildNavigationStateChange(tabId, preUrl, preTitle, Date.now() - startTime);
+    }
+    throw err;
+  }
+
+  if (res?.deferred) {
+    await waitForNetIdle(tabId, 250, 1200);
+    try {
+      return await forwardToContent(tabId, 'act.finish_diff', {});
+    } catch (err: any) {
+      if (err?.code === 'content_script_error' || err?.code === 'content_script_timeout') {
+        return await buildNavigationStateChange(
+          tabId,
+          res.pre_url || preUrl,
+          res.pre_title || preTitle,
+          Date.now() - startTime
+        );
+      }
+      throw err;
+    }
+  }
 
   return res;
 }

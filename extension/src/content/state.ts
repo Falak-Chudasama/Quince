@@ -6,6 +6,30 @@ export interface ElementDescriptor {
   inViewport?: boolean;
 }
 
+export interface Capture {
+  url: string;
+  title: string;
+  scroll: number;
+  maxScroll: number;
+  viewportHeight: number;
+  focusRef?: string;
+  focusRole?: string;
+  focusValue?: string;
+  els: Map<string, ElementSnapshotItem>;
+  messages: string[];
+  modalRef?: string;
+}
+
+export interface ElementSnapshotItem {
+  role: string;
+  name: string;
+  value?: string;
+  checked?: boolean;
+  disabled?: boolean;
+  expanded?: string;
+  inViewport?: boolean;
+}
+
 export class ContentState {
   public frameId: number = 0;
   public frameKey: string = 'top';
@@ -16,12 +40,17 @@ export class ContentState {
   public descriptors = new Map<string, ElementDescriptor>();
   public indicatorOn: boolean = false;
   public lastCapture: any = null;
+  public pendingPre: Capture | null = null;
+  public pendingActionMeta: { method: string; ref?: string; targetRole?: string; startTime: number } | null = null;
+  public unsubmittedEdit: { ref: string; url: string } | null = null;
 
   resetRefs(): void {
     this.generation++;
     this.nextRef = 1;
     this.refToEl.clear();
     this.descriptors.clear();
+    this.pendingPre = null;
+    this.pendingActionMeta = null;
   }
 
   getOrCreateRef(el: Element): string {

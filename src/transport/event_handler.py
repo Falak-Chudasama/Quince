@@ -7,7 +7,7 @@ audio to the player. Kept separate from connection/reconnect logic
 and from the hotkey/orchestration logic in client.py.
 """
 
-from typing import Callable
+from typing import Any, Callable
 
 from src.audio.player import PCMPlayer
 from src.logging_setup import get_logger
@@ -34,6 +34,10 @@ class BasketEventHandler:
         on_llm_token: Callable[[str], None],
         on_llm_final: Callable[[str], None],
         on_stt_final: Callable[[str], None] | None = None,
+        on_rtsi_speak: Callable[[str], None] | None = None,
+        on_await_user: Callable[[dict[str, Any]], None] | None = None,
+        on_tts_started: Callable[[Any], None] | None = None,
+        on_tts_completed: Callable[[], None] | None = None,
     ) -> None:
         self._player = player
         self._turn_finished_cb = on_turn_finished
@@ -41,6 +45,10 @@ class BasketEventHandler:
         self._llm_token_cb = on_llm_token
         self._llm_final_cb = on_llm_final
         self._stt_final_cb = on_stt_final
+        self._rtsi_speak_cb = on_rtsi_speak
+        self._await_user_cb = on_await_user
+        self._tts_started_cb = on_tts_started
+        self._tts_completed_cb = on_tts_completed
         self._turn_had_output = False
 
         # event.type -> log-only handler. Anything with a caller-visible
@@ -52,8 +60,7 @@ class BasketEventHandler:
             "stt.started": lambda e: logger.info("STT started."),
             "stt.partial": lambda e: logger.debug("STT partial: %s", e.data),
             "stt.final": lambda e: logger.info("STT final: %r", e.data),
-            "tts.started": lambda e: logger.info("TTS started: %r", e.data),
-            "tts.completed": lambda e: logger.info("TTS completed."),
+            "rtsi.ended": lambda e: logger.info("RTSI session ended: %r", e.data),
         }
 
     # ------------------------------------------------------------
@@ -111,6 +118,36 @@ class BasketEventHandler:
             if text:
                 self._llm_final_cb(text)
             logger.info("LLM final.")
+            return
+
+        if event.type == "tts.started":
+            logger.info("TTS started: %r", event.data)
+            if self._tts_started_cb is not None:
+                self._tts_started_cb(event.data)
+            return
+
+        if event.type == "tts.completed":
+            logger.info("TTS completed.")
+            if self._tts_completed_cb is not None:
+                self._tts_completed_cb()
+            return
+
+        if event.type == "rtsi.speak":
+            self._turn_had_output = True
+            if isinstance(event.data, dict):
+                text = str(event.data.get("text") or event.data.get("line") or "").strip()
+            else:
+                text = str(event.data or event.raw.get("text") or "").strip()
+            logger.info("RTSI speak: %r", text)
+            if text and self._rtsi_speak_cb is not None:
+                self._rtsi_speak_cb(text)
+            return
+
+        if event.type == "rtsi.await_user":
+            payload = event.data if isinstance(event.data, dict) else dict(event.raw)
+            logger.info("RTSI awaiting user: %r", payload)
+            if self._await_user_cb is not None:
+                self._await_user_cb(payload)
             return
 
         if event.type == "cancelled":
